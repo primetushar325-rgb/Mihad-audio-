@@ -26,6 +26,9 @@ void main() {
         sensitivity: 1.4,
         barCount: 72,
         density: VisualizerDensity.ultra,
+        barGap: VisualizerBarGap.large,
+        visualizerEffect: VisualizerEffect.stepEqualizer,
+        peakHoldEnabled: true,
         smoothing: 0.62,
         waveHeight: 0.83,
         impactSensitivity: 0.74,
@@ -61,6 +64,9 @@ void main() {
       expect(restored.sensitivity, original.sensitivity);
       expect(restored.barCount, original.barCount);
       expect(restored.density, original.density);
+      expect(restored.barGap, original.barGap);
+      expect(restored.visualizerEffect, original.visualizerEffect);
+      expect(restored.peakHoldEnabled, original.peakHoldEnabled);
       expect(restored.smoothing, original.smoothing);
       expect(restored.waveHeight, original.waveHeight);
       expect(restored.impactSensitivity, original.impactSensitivity);
@@ -83,7 +89,10 @@ void main() {
       expect(restored.template, VisualizerTemplateType.storyWave);
       expect(restored.colorMode, VisualizerColorMode.gradient);
       expect(restored.backgroundOpacity, 0.0);
-      expect(restored.density, VisualizerDensity.high);
+      expect(restored.density, VisualizerDensity.medium);
+      expect(restored.barGap, VisualizerBarGap.medium);
+      expect(restored.visualizerEffect, VisualizerEffect.softBars);
+      expect(restored.peakHoldEnabled, isFalse);
       expect(restored.mirrored, isFalse);
       expect(restored.centerLineEnabled, isTrue);
       expect(restored.alignment, VisualizerAlignment.center);
@@ -115,7 +124,7 @@ void main() {
       expect(reset.template, VisualizerTemplateType.storyWave);
       expect(reset.aspectRatio, ExportAspectRatio.ratio16x9);
       expect(reset.opacity, 1.0);
-      expect(reset.barWidth, 1.6);
+      expect(reset.barWidth, 2.0);
       expect(reset.mirrored, isFalse);
     });
 
@@ -128,6 +137,8 @@ void main() {
       expect(preset.primaryColorValue, 0xFFE11D48);
       expect(preset.secondaryColorValue, 0xFF3B0764);
       expect(preset.impactSensitivity, greaterThanOrEqualTo(0.65));
+      expect(preset.barCount, inInclusiveRange(30, 45));
+      expect(preset.visualizerEffect, VisualizerEffect.centerGlow);
       expect(preset.mirrored, isFalse);
       expect(preset.centerLineEnabled, isTrue);
     });

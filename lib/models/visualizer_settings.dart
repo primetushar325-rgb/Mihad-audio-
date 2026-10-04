@@ -8,6 +8,20 @@ enum VisualizerColorMode { single, gradient, rainbow, random }
 
 enum VisualizerDensity { low, medium, high, ultra }
 
+enum VisualizerBarGap { small, medium, large }
+
+enum VisualizerEffect {
+  classicRadio,
+  softBars,
+  doubleHeight,
+  peakHold,
+  centerGlow,
+  randomizedGroups,
+  stepEqualizer,
+  fadeTop,
+  cinematicPulse,
+}
+
 enum ExportAspectRatio { ratio16x9, ratio9x16, ratio1x1, original }
 
 extension ExportAspectRatioX on ExportAspectRatio {
@@ -51,6 +65,57 @@ extension VisualizerDensityX on VisualizerDensity {
         return 'High';
       case VisualizerDensity.ultra:
         return 'Ultra';
+    }
+  }
+
+  int get defaultBars {
+    switch (this) {
+      case VisualizerDensity.low:
+        return 28;
+      case VisualizerDensity.medium:
+        return 48;
+      case VisualizerDensity.high:
+        return 68;
+      case VisualizerDensity.ultra:
+        return 96;
+    }
+  }
+}
+
+extension VisualizerBarGapX on VisualizerBarGap {
+  String get label {
+    switch (this) {
+      case VisualizerBarGap.small:
+        return 'Small';
+      case VisualizerBarGap.medium:
+        return 'Medium';
+      case VisualizerBarGap.large:
+        return 'Large';
+    }
+  }
+}
+
+extension VisualizerEffectX on VisualizerEffect {
+  String get label {
+    switch (this) {
+      case VisualizerEffect.classicRadio:
+        return 'Classic Radio';
+      case VisualizerEffect.softBars:
+        return 'Soft Bars';
+      case VisualizerEffect.doubleHeight:
+        return 'Double Height';
+      case VisualizerEffect.peakHold:
+        return 'Peak Hold';
+      case VisualizerEffect.centerGlow:
+        return 'Center Glow';
+      case VisualizerEffect.randomizedGroups:
+        return 'Organic Groups';
+      case VisualizerEffect.stepEqualizer:
+        return 'Step Equalizer';
+      case VisualizerEffect.fadeTop:
+        return 'Fade Top';
+      case VisualizerEffect.cinematicPulse:
+        return 'Cinematic Pulse';
     }
   }
 }
@@ -126,9 +191,19 @@ class VisualizerSettings {
   /// the renderer to a mobile-friendly range.
   int barCount;
 
-  /// Coarse density preset shown in the UI. The renderer combines this with
-  /// [barCount] and the available width to keep mobile performance safe.
+  /// Coarse density preset shown in the UI. Changing this actually changes
+  /// how many bars the renderer draws, which improves performance on mobile.
   VisualizerDensity density;
+
+  /// Gap preset used to keep independent bars readable and prevent overlap.
+  VisualizerBarGap barGap;
+
+  /// Rendering algorithm/effect for the fixed-baseline equalizer bars.
+  VisualizerEffect visualizerEffect;
+
+  /// Optional peak marker control. Templates can also force peak rendering
+  /// by using [VisualizerEffect.peakHold].
+  bool peakHoldEnabled;
 
   /// 0.0 - 1.0 spatial smoothing across neighboring bars.
   double smoothing;
@@ -180,8 +255,11 @@ class VisualizerSettings {
     double? waveOpacity,
     this.glowIntensity = 0.35,
     this.sensitivity = 1.10,
-    this.barCount = 88,
-    this.density = VisualizerDensity.high,
+    this.barCount = 48,
+    this.density = VisualizerDensity.medium,
+    this.barGap = VisualizerBarGap.medium,
+    this.visualizerEffect = VisualizerEffect.softBars,
+    this.peakHoldEnabled = false,
     this.smoothing = 0.65,
     this.waveHeight = 0.78,
     this.impactSensitivity = 0.65,
@@ -198,8 +276,8 @@ class VisualizerSettings {
        backgroundColorValue = backgroundColorValue ?? 0xFF000000,
        borderColorValue = borderColorValue ?? 0xFFFFFFFF,
        waveOpacity = (waveOpacity ?? opacity ?? 1.0).clamp(0.0, 1.0).toDouble(),
-       barWidth = (waveThickness ?? barWidth ?? 1.6)
-           .clamp(0.5, 12.0)
+       barWidth = (waveThickness ?? barWidth ?? 2.0)
+           .clamp(0.5, 6.0)
            .toDouble();
 
   Color get primaryColor => Color(primaryColorValue);
@@ -229,6 +307,9 @@ class VisualizerSettings {
     double? sensitivity,
     int? barCount,
     VisualizerDensity? density,
+    VisualizerBarGap? barGap,
+    VisualizerEffect? visualizerEffect,
+    bool? peakHoldEnabled,
     double? smoothing,
     double? waveHeight,
     double? impactSensitivity,
@@ -262,6 +343,9 @@ class VisualizerSettings {
       sensitivity: sensitivity ?? this.sensitivity,
       barCount: barCount ?? this.barCount,
       density: density ?? this.density,
+      barGap: barGap ?? this.barGap,
+      visualizerEffect: visualizerEffect ?? this.visualizerEffect,
+      peakHoldEnabled: peakHoldEnabled ?? this.peakHoldEnabled,
       smoothing: smoothing ?? this.smoothing,
       waveHeight: waveHeight ?? this.waveHeight,
       impactSensitivity: impactSensitivity ?? this.impactSensitivity,
@@ -288,8 +372,11 @@ class VisualizerSettings {
           backgroundOpacity: 0.20,
           glowIntensity: 0.35,
           sensitivity: 1.10,
-          density: VisualizerDensity.high,
-          barCount: 88,
+          density: VisualizerDensity.medium,
+          barCount: 48,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.softBars,
+          peakHoldEnabled: false,
           smoothing: 0.65,
           waveHeight: 0.78,
           impactSensitivity: 0.58,
@@ -297,7 +384,7 @@ class VisualizerSettings {
           release: 0.58,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 1.6,
+          barWidth: 2.0,
         );
       case VisualizerTemplateType.horrorWave:
       case VisualizerTemplateType.darkWave:
@@ -308,8 +395,11 @@ class VisualizerSettings {
           backgroundOpacity: 0.28,
           glowIntensity: 0.40,
           sensitivity: 1.30,
-          density: VisualizerDensity.high,
-          barCount: 96,
+          density: VisualizerDensity.medium,
+          barCount: 42,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.centerGlow,
+          peakHoldEnabled: false,
           smoothing: 0.55,
           waveHeight: 0.86,
           impactSensitivity: 0.70,
@@ -317,7 +407,7 @@ class VisualizerSettings {
           release: 0.56,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 1.4,
+          barWidth: 2.0,
         );
       case VisualizerTemplateType.cinematicWave:
       case VisualizerTemplateType.cinematicGlow:
@@ -328,16 +418,19 @@ class VisualizerSettings {
           backgroundOpacity: 0.24,
           glowIntensity: 0.45,
           sensitivity: 1.10,
-          density: VisualizerDensity.high,
-          barCount: 96,
-          smoothing: 0.70,
+          density: VisualizerDensity.medium,
+          barCount: 36,
+          barGap: VisualizerBarGap.large,
+          visualizerEffect: VisualizerEffect.cinematicPulse,
+          peakHoldEnabled: false,
+          smoothing: 0.72,
           waveHeight: 0.80,
           impactSensitivity: 0.62,
           attack: 0.80,
           release: 0.70,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 1.7,
+          barWidth: 3.0,
         );
       case VisualizerTemplateType.spectrumBars:
       case VisualizerTemplateType.equalizerBars:
@@ -349,7 +442,10 @@ class VisualizerSettings {
           glowIntensity: 0.38,
           sensitivity: 1.10,
           density: VisualizerDensity.high,
-          barCount: 96,
+          barCount: 68,
+          barGap: VisualizerBarGap.small,
+          visualizerEffect: VisualizerEffect.peakHold,
+          peakHoldEnabled: true,
           smoothing: 0.45,
           waveHeight: 0.84,
           impactSensitivity: 0.55,
@@ -357,7 +453,7 @@ class VisualizerSettings {
           release: 0.45,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 1.8,
+          barWidth: 2.5,
         );
       case VisualizerTemplateType.rainbowWave:
         return base.copyWith(
@@ -365,12 +461,15 @@ class VisualizerSettings {
           glowIntensity: 0.42,
           sensitivity: 1.10,
           density: VisualizerDensity.high,
-          barCount: 100,
+          barCount: 68,
+          barGap: VisualizerBarGap.small,
+          visualizerEffect: VisualizerEffect.classicRadio,
+          peakHoldEnabled: false,
           smoothing: 0.45,
           waveHeight: 0.84,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 1.8,
+          barWidth: 2.2,
         );
       case VisualizerTemplateType.mirrorBars:
       case VisualizerTemplateType.mirrorWave:
@@ -379,9 +478,12 @@ class VisualizerSettings {
         return base.copyWith(
           mirrored: true,
           centerLineEnabled: true,
-          density: VisualizerDensity.high,
-          barCount: 88,
-          barWidth: 1.8,
+          density: VisualizerDensity.medium,
+          barCount: 48,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.softBars,
+          peakHoldEnabled: false,
+          barWidth: 2.0,
           smoothing: 0.58,
         );
       case VisualizerTemplateType.minimalStory:
@@ -393,27 +495,121 @@ class VisualizerSettings {
           backgroundOpacity: 0.08,
           glowIntensity: 0.18,
           sensitivity: 1.00,
-          density: VisualizerDensity.medium,
-          barCount: 72,
+          density: VisualizerDensity.low,
+          barCount: 30,
+          barGap: VisualizerBarGap.large,
+          visualizerEffect: VisualizerEffect.classicRadio,
+          peakHoldEnabled: false,
           smoothing: 0.70,
           waveHeight: 0.64,
           impactSensitivity: 0.45,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 1.2,
+          barWidth: 1.5,
         );
       case VisualizerTemplateType.bassPulse:
       case VisualizerTemplateType.thickBars:
         return base.copyWith(
-          density: VisualizerDensity.medium,
-          barCount: 64,
+          density: VisualizerDensity.high,
+          barCount: 60,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.doubleHeight,
+          peakHoldEnabled: true,
           smoothing: 0.42,
           waveHeight: 0.88,
           sensitivity: 1.20,
           impactSensitivity: 0.62,
           mirrored: false,
           centerLineEnabled: true,
-          barWidth: 2.2,
+          barWidth: 3.0,
+        );
+      case VisualizerTemplateType.classicWaveform:
+      case VisualizerTemplateType.classicBars:
+      case VisualizerTemplateType.bottomBars:
+      case VisualizerTemplateType.topBars:
+        return base.copyWith(
+          density: VisualizerDensity.medium,
+          barCount: 48,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.classicRadio,
+          peakHoldEnabled: false,
+          smoothing: 0.54,
+          barWidth: 2.0,
+        );
+      case VisualizerTemplateType.roundedBars:
+      case VisualizerTemplateType.thickWave:
+      case VisualizerTemplateType.smoothWave:
+        return base.copyWith(
+          density: VisualizerDensity.medium,
+          barCount: 50,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.softBars,
+          peakHoldEnabled: false,
+          smoothing: 0.66,
+          barWidth: 2.4,
+        );
+      case VisualizerTemplateType.thinBars:
+      case VisualizerTemplateType.thinWave:
+        return base.copyWith(
+          density: VisualizerDensity.high,
+          barCount: 68,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.classicRadio,
+          peakHoldEnabled: false,
+          smoothing: 0.56,
+          barWidth: 1.2,
+        );
+      case VisualizerTemplateType.neonWave:
+      case VisualizerTemplateType.glowWave:
+        return base.copyWith(
+          density: VisualizerDensity.medium,
+          barCount: 48,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.centerGlow,
+          peakHoldEnabled: false,
+          glowIntensity: 0.45,
+          smoothing: 0.60,
+          barWidth: 2.0,
+        );
+      case VisualizerTemplateType.pulseWave:
+        return base.copyWith(
+          density: VisualizerDensity.medium,
+          barCount: 44,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.doubleHeight,
+          peakHoldEnabled: true,
+          smoothing: 0.48,
+          barWidth: 2.6,
+        );
+      case VisualizerTemplateType.frequencyWave:
+        return base.copyWith(
+          density: VisualizerDensity.high,
+          barCount: 68,
+          barGap: VisualizerBarGap.small,
+          visualizerEffect: VisualizerEffect.randomizedGroups,
+          peakHoldEnabled: false,
+          smoothing: 0.42,
+          barWidth: 2.0,
+        );
+      case VisualizerTemplateType.filledWave:
+        return base.copyWith(
+          density: VisualizerDensity.medium,
+          barCount: 48,
+          barGap: VisualizerBarGap.medium,
+          visualizerEffect: VisualizerEffect.fadeTop,
+          peakHoldEnabled: false,
+          smoothing: 0.62,
+          barWidth: 2.4,
+        );
+      case VisualizerTemplateType.verticalFrequencyBars:
+        return base.copyWith(
+          density: VisualizerDensity.low,
+          barCount: 30,
+          barGap: VisualizerBarGap.large,
+          visualizerEffect: VisualizerEffect.stepEqualizer,
+          peakHoldEnabled: false,
+          smoothing: 0.48,
+          barWidth: 2.4,
         );
       default:
         return base;
@@ -449,6 +645,9 @@ class VisualizerSettings {
     'sensitivity': sensitivity,
     'barCount': barCount,
     'density': density.name,
+    'barGap': barGap.name,
+    'visualizerEffect': visualizerEffect.name,
+    'peakHoldEnabled': peakHoldEnabled,
     'smoothing': smoothing,
     'waveHeight': waveHeight,
     'impactSensitivity': impactSensitivity,
@@ -502,11 +701,20 @@ class VisualizerSettings {
       sensitivity: _double(json['sensitivity'], 1.10)
           .clamp(0.05, 10.0)
           .toDouble(),
-      barCount: _int(json['barCount'], 88).clamp(16, 180).toInt(),
+      barCount: _int(json['barCount'], 48).clamp(16, 120).toInt(),
       density: VisualizerDensity.values.firstWhere(
         (e) => e.name == json['density'],
-        orElse: () => VisualizerDensity.high,
+        orElse: () => VisualizerDensity.medium,
       ),
+      barGap: VisualizerBarGap.values.firstWhere(
+        (e) => e.name == json['barGap'],
+        orElse: () => VisualizerBarGap.medium,
+      ),
+      visualizerEffect: VisualizerEffect.values.firstWhere(
+        (e) => e.name == json['visualizerEffect'],
+        orElse: () => VisualizerEffect.softBars,
+      ),
+      peakHoldEnabled: json['peakHoldEnabled'] as bool? ?? false,
       smoothing: _double(json['smoothing'], 0.65)
           .clamp(0.0, 1.0)
           .toDouble(),
@@ -520,8 +728,8 @@ class VisualizerSettings {
       release: _double(json['release'], 0.58).clamp(0.0, 1.0).toDouble(),
       mirrored: json['mirrored'] as bool? ?? false,
       centerLineEnabled: json['centerLineEnabled'] as bool? ?? true,
-      barWidth: _double(json['waveThickness'] ?? json['barWidth'], 1.6)
-          .clamp(0.5, 12.0)
+      barWidth: _double(json['waveThickness'] ?? json['barWidth'], 2.0)
+          .clamp(0.5, 6.0)
           .toDouble(),
       alignment: VisualizerAlignment.values.firstWhere(
         (e) => e.name == json['alignment'],

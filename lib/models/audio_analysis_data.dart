@@ -116,6 +116,50 @@ class AudioAnalysisData {
     return waveform[index];
   }
 
+  /// Returns recent peak-held frequency values ending at [positionMs]. This
+  /// is deterministic and derived from real analysis frames, so preview and
+  /// export show the same falling peak markers without maintaining a separate
+  /// animation state.
+  List<double> peakBandsAt(double positionMs, {int lookbackFrames = 14}) {
+    return _peakListAt(bands, bandCount, positionMs, lookbackFrames);
+  }
+
+  /// Returns recent peak-held time-domain values ending at [positionMs].
+  List<double> peakWaveformAt(double positionMs, {int lookbackFrames = 14}) {
+    return _peakListAt(
+      waveform,
+      waveformSampleCount,
+      positionMs,
+      lookbackFrames,
+    );
+  }
+
+  List<double> _peakListAt(
+    List<List<double>> frames,
+    int valueCount,
+    double positionMs,
+    int lookbackFrames,
+  ) {
+    if (frames.isEmpty) return List<double>.filled(valueCount, 0.0);
+    final index = _indexFor(positionMs).clamp(0, frames.length - 1).toInt();
+    final start = (index - lookbackFrames).clamp(0, frames.length - 1).toInt();
+    final output = List<double>.filled(valueCount, 0.0);
+    for (var f = start; f <= index; f++) {
+      final age = index - f;
+      final ageRatio = (age / (lookbackFrames + 1))
+          .clamp(0.0, 1.0)
+          .toDouble();
+      final decay = 1.0 - ageRatio * 0.55;
+      final values = frames[f];
+      final limit = values.length < valueCount ? values.length : valueCount;
+      for (var i = 0; i < limit; i++) {
+        final v = (values[i] * decay).clamp(0.0, 1.0).toDouble();
+        if (v > output[i]) output[i] = v;
+      }
+    }
+    return output;
+  }
+
   /// Returns the sudden-impact strength at [positionMs], scaled by a
   /// 0.0-1.0 user sensitivity value.
   double impactAt(double positionMs, {double sensitivity = 0.65}) {

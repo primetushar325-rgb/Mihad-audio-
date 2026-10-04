@@ -78,6 +78,8 @@ class _TemplatePreviewTileState extends State<TemplatePreviewTile>
       impact: 0.25,
       bands: bands,
       waveformSamples: waveform,
+      peakBands: bands,
+      peakWaveformSamples: waveform,
     );
   }
 
@@ -104,10 +106,12 @@ class _TemplatePreviewTileState extends State<TemplatePreviewTile>
       height: 1,
       backgroundOpacity: 0.24,
       cornerRadius: 0.14,
-      glowIntensity: 0.38,
-      barWidth: 1.6,
-      barCount: 88,
-      density: VisualizerDensity.high,
+      glowIntensity: 0.32,
+      barWidth: 2.0,
+      barCount: 48,
+      density: VisualizerDensity.medium,
+      barGap: VisualizerBarGap.medium,
+      visualizerEffect: VisualizerEffect.softBars,
       smoothing: 0.58,
       waveHeight: 0.82,
     ).applyTemplatePreset(widget.type).copyWith(

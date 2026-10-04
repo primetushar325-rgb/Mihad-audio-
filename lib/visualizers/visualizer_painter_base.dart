@@ -13,6 +13,8 @@ class VisualizerFrameData {
   final double impact;
   final List<double> bands;
   final List<double> waveformSamples;
+  final List<double> peakBands;
+  final List<double> peakWaveformSamples;
 
   const VisualizerFrameData({
     required this.amplitude,
@@ -20,6 +22,8 @@ class VisualizerFrameData {
     this.impact = 0,
     required this.bands,
     this.waveformSamples = const [],
+    this.peakBands = const [],
+    this.peakWaveformSamples = const [],
   });
 
   static const empty = VisualizerFrameData(amplitude: 0, bands: []);
@@ -44,6 +48,8 @@ VisualizerFrameData visualizerFrameFromAnalysis(
     ),
     bands: analysis.bandsAt(positionMs),
     waveformSamples: analysis.waveformAt(positionMs),
+    peakBands: analysis.peakBandsAt(positionMs),
+    peakWaveformSamples: analysis.peakWaveformAt(positionMs),
   );
 }
 

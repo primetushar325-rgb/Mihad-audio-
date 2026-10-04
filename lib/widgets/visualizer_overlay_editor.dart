@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:video_player/video_player.dart';
 
 import '../app/theme.dart';
 import '../models/audio_analysis_data.dart';
 import '../models/visualizer_settings.dart';
 import '../services/export_math.dart';
-import '../visualizers/visualizer_canvas_painter.dart';
 import '../visualizers/visualizer_painter_base.dart';
+import '../visualizers/visualizer_registry.dart';
 
 /// Renders the visualizer overlay on top of the video preview and lets
 /// the user drag it to reposition, and drag its corner handle to resize.
@@ -36,21 +37,103 @@ class VisualizerOverlayEditor extends StatefulWidget {
       _VisualizerOverlayEditorState();
 }
 
-class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
+class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
+    with SingleTickerProviderStateMixin {
   late VisualizerSettings _draftSettings;
+  late final Ticker _ticker;
+  final _repaint = ChangeNotifier();
+  final _qualityLevel = ValueNotifier<int>(0);
   bool _interacting = false;
+  double _lastCanvasWidth = 360;
+  int _lastNotifyMicros = 0;
+  int _lastTickMicros = 0;
+  int _slowFrameStreak = 0;
+  int _stableFrameStreak = 0;
+  Duration _lastPaintedPosition = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _draftSettings = widget.settings;
+    widget.controller.addListener(_handleControllerEvent);
+    _ticker = createTicker(_onTick)..start();
   }
 
   @override
   void didUpdateWidget(covariant VisualizerOverlayEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.removeListener(_handleControllerEvent);
+      widget.controller.addListener(_handleControllerEvent);
+      _lastPaintedPosition = widget.controller.value.position;
+      _repaint.notifyListeners();
+    }
     if (!_interacting && !identical(oldWidget.settings, widget.settings)) {
       _draftSettings = widget.settings;
+      _repaint.notifyListeners();
+    }
+    if (!identical(oldWidget.analysisData, widget.analysisData)) {
+      _repaint.notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerEvent);
+    _ticker.dispose();
+    _repaint.dispose();
+    _qualityLevel.dispose();
+    super.dispose();
+  }
+
+  int get _targetFrameMicros {
+    final mobile = _lastCanvasWidth < 720;
+    final baseMs = mobile ? 33 : 22; // ~30 FPS mobile, ~45 FPS larger screens.
+    final interactionPenalty = _interacting ? 14 : 0;
+    final qualityPenalty = _qualityLevel.value * 8;
+    return (baseMs + interactionPenalty + qualityPenalty) * 1000;
+  }
+
+  void _handleControllerEvent() {
+    final value = widget.controller.value;
+    if (!value.isPlaying && value.position != _lastPaintedPosition) {
+      _lastPaintedPosition = value.position;
+      _repaint.notifyListeners();
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    final micros = elapsed.inMicroseconds;
+    final tickDelta = _lastTickMicros == 0 ? 0 : micros - _lastTickMicros;
+    _lastTickMicros = micros;
+    final target = _targetFrameMicros;
+    if (tickDelta > 0) _updateAdaptiveQuality(tickDelta, target);
+
+    final value = widget.controller.value;
+    if (!value.isPlaying) return;
+    if (micros - _lastNotifyMicros < target) return;
+    _lastNotifyMicros = micros;
+    _lastPaintedPosition = value.position;
+    _repaint.notifyListeners();
+  }
+
+  void _updateAdaptiveQuality(int tickDeltaMicros, int targetMicros) {
+    if (tickDeltaMicros > targetMicros * 2.1) {
+      _slowFrameStreak++;
+      _stableFrameStreak = 0;
+      if (_slowFrameStreak >= 6 && _qualityLevel.value < 2) {
+        _qualityLevel.value++;
+        _slowFrameStreak = 0;
+        _repaint.notifyListeners();
+      }
+    } else if (tickDeltaMicros < targetMicros * 1.25) {
+      _stableFrameStreak++;
+      _slowFrameStreak = 0;
+      if (_stableFrameStreak >= 180 && _qualityLevel.value > 0) {
+        _qualityLevel.value--;
+        _stableFrameStreak = 0;
+        _repaint.notifyListeners();
+      }
     }
   }
 
@@ -74,6 +157,7 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
       builder: (context, constraints) {
         final canvasW = constraints.maxWidth <= 0 ? 1.0 : constraints.maxWidth;
         final canvasH = constraints.maxHeight <= 0 ? 1.0 : constraints.maxHeight;
+        _lastCanvasWidth = canvasW;
         final s = _interacting ? _draftSettings : widget.settings;
         final bounds = resolveVisualizerBounds(s, canvasW, canvasH);
         final left = bounds.left;
@@ -145,33 +229,22 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
                                 ),
                               )
                             : const BoxDecoration(),
-                        child: AnimatedBuilder(
-                          animation: widget.controller,
-                          builder: (context, _) {
-                            final posMs = widget
-                                .controller
-                                .value
-                                .position
-                                .inMilliseconds
-                                .toDouble();
-                            final frame = visualizerFrameFromAnalysis(
-                              widget.analysisData,
-                              posMs,
-                              s,
-                            );
-                            return CustomPaint(
-                              painter: VisualizerCanvasPainter(
-                                data: frame,
-                                settings: s.copyWith(
-                                  posX: 0,
-                                  posY: 0,
-                                  width: 1,
-                                  height: 1,
-                                ),
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: _LiveVisualizerCanvasPainter(
+                              controller: widget.controller,
+                              analysisData: widget.analysisData,
+                              settings: s.copyWith(
+                                posX: 0,
+                                posY: 0,
+                                width: 1,
+                                height: 1,
                               ),
-                              size: Size(width, height),
-                            );
-                          },
+                              qualityLevel: _qualityLevel,
+                              repaint: _repaint,
+                            ),
+                            size: Size(width, height),
+                          ),
                         ),
                       ),
                     ),
@@ -205,6 +278,59 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
         );
       },
     );
+  }
+}
+
+class _LiveVisualizerCanvasPainter extends CustomPainter {
+  final VideoPlayerController controller;
+  final AudioAnalysisData analysisData;
+  final VisualizerSettings settings;
+  final ValueNotifier<int> qualityLevel;
+
+  _LiveVisualizerCanvasPainter({
+    required this.controller,
+    required this.analysisData,
+    required this.settings,
+    required this.qualityLevel,
+    required Listenable repaint,
+  }) : super(repaint: repaint);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final effectiveSettings = _performanceAdjustedSettings(settings);
+    final posMs = controller.value.position.inMilliseconds.toDouble();
+    final frame = visualizerFrameFromAnalysis(
+      analysisData,
+      posMs,
+      effectiveSettings,
+    );
+    paintVisualizerOverlayBox(
+      canvas: canvas,
+      size: size,
+      data: frame,
+      settings: effectiveSettings,
+      delegate: painterFor(effectiveSettings.template),
+    );
+  }
+
+  VisualizerSettings _performanceAdjustedSettings(VisualizerSettings source) {
+    final level = qualityLevel.value;
+    if (level <= 0) return source;
+    final maxBars = level == 1 ? 48 : 32;
+    final bars = source.barCount > maxBars ? maxBars : source.barCount;
+    final glowScale = level == 1 ? 0.62 : 0.34;
+    return source.copyWith(
+      barCount: bars,
+      glowIntensity: source.glowIntensity * glowScale,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LiveVisualizerCanvasPainter oldDelegate) {
+    return oldDelegate.controller != controller ||
+        oldDelegate.analysisData != analysisData ||
+        oldDelegate.settings != settings ||
+        oldDelegate.qualityLevel != qualityLevel;
   }
 }
 

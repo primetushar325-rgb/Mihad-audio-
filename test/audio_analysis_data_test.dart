@@ -12,6 +12,8 @@ void main() {
       expect(data.impactAt(500), 0.0);
       expect(data.bandsAt(500), List<double>.filled(8, 0.0));
       expect(data.waveformAt(500), List<double>.filled(12, 0.0));
+      expect(data.peakBandsAt(500), List<double>.filled(8, 0.0));
+      expect(data.peakWaveformAt(500), List<double>.filled(12, 0.0));
     });
 
     test('amplitudeAt looks up the nearest analysis frame', () {

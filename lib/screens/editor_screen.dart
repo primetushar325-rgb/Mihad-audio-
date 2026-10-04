@@ -768,6 +768,36 @@ class _AppearanceSection extends StatelessWidget {
               ),
             ],
             sectionLabel('Equalizer / Wave'),
+            DropdownButtonFormField<VisualizerEffect>(
+              value: settings.visualizerEffect,
+              decoration: const InputDecoration(
+                labelText: 'Type',
+                helperText: 'Different canvas algorithms: classic, soft, peak hold, stepped, fade, cinematic.',
+              ),
+              items: VisualizerEffect.values
+                  .map(
+                    (effect) => DropdownMenuItem(
+                      value: effect,
+                      child: Text(effect.label),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (effect) {
+                if (effect == null) return;
+                update(
+                  (s) => s.copyWith(
+                    visualizerEffect: effect,
+                    peakHoldEnabled: effect == VisualizerEffect.peakHold
+                        ? true
+                        : s.peakHoldEnabled,
+                    barCount: effect == VisualizerEffect.cinematicPulse
+                        ? s.barCount.clamp(20, 40).toInt()
+                        : s.barCount,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
             slider(
               'Opacity',
               settings.waveOpacity,
@@ -787,13 +817,13 @@ class _AppearanceSection extends StatelessWidget {
               divisions: 100,
             ),
             slider(
-              'Line thickness',
+              'Bar thickness',
               settings.barWidth,
               1,
-              5,
+              6,
               (v) => update((s) => s.copyWith(barWidth: v)),
               valueLabel: '${settings.barWidth.toStringAsFixed(1)} px',
-              divisions: 40,
+              divisions: 50,
             ),
             slider(
               'Sensitivity',
@@ -805,7 +835,7 @@ class _AppearanceSection extends StatelessWidget {
               divisions: 90,
             ),
             slider(
-              'Wave height',
+              'Max height',
               settings.waveHeight,
               0.05,
               1,
@@ -860,10 +890,10 @@ class _AppearanceSection extends StatelessWidget {
                 (s) => s.copyWith(
                   density: set.first,
                   barCount: switch (set.first) {
-                    VisualizerDensity.low => 56,
-                    VisualizerDensity.medium => 72,
-                    VisualizerDensity.high => 96,
-                    VisualizerDensity.ultra => 132,
+                    VisualizerDensity.low => 28,
+                    VisualizerDensity.medium => 48,
+                    VisualizerDensity.high => 68,
+                    VisualizerDensity.ultra => 96,
                   },
                 ),
               ),
@@ -871,11 +901,31 @@ class _AppearanceSection extends StatelessWidget {
             slider(
               'Fine bar count',
               settings.barCount.toDouble(),
-              36,
-              160,
+              24,
+              100,
               (v) => update((s) => s.copyWith(barCount: v.round())),
               valueLabel: '${settings.barCount} bars',
-              divisions: 124,
+              divisions: 76,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Bar gap',
+              style: TextStyle(fontSize: 13, color: MihadColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<VisualizerBarGap>(
+              segments: VisualizerBarGap.values
+                  .map(
+                    (gap) => ButtonSegment(
+                      value: gap,
+                      label: Text(gap.label),
+                    ),
+                  )
+                  .toList(),
+              selected: {settings.barGap},
+              onSelectionChanged: (set) => update(
+                (s) => s.copyWith(barGap: set.first),
+              ),
             ),
             slider(
               'Smoothing',
@@ -892,6 +942,13 @@ class _AppearanceSection extends StatelessWidget {
               subtitle: const Text('Off by default: fixed bottom, top moves only'),
               value: settings.mirrored,
               onChanged: (v) => update((s) => s.copyWith(mirrored: v)),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Peak hold markers'),
+              subtitle: const Text('Shows small falling peak caps for music meters'),
+              value: settings.peakHoldEnabled,
+              onChanged: (v) => update((s) => s.copyWith(peakHoldEnabled: v)),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,

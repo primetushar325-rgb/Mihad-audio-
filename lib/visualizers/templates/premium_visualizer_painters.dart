@@ -381,13 +381,25 @@ enum PremiumSpectrumStyle {
 
 enum PremiumSpectrumSource { waveform, spectrum, cinematic }
 
+class _StickGeometry {
+  final double x;
+  final double height;
+  final double peakHeight;
+  final double t;
+
+  const _StickGeometry({
+    required this.x,
+    required this.height,
+    required this.peakHeight,
+    required this.t,
+  });
+}
+
 /// Professional fixed-baseline equalizer renderer.
 ///
-/// It draws many independent, extremely thin vertical sticks on a single
-/// Flutter Canvas. In the default (non-mirrored) mode every bar has the same
-/// fixed bottom baseline and only the top Y changes from real audio data.
-/// This replaces the old connected zigzag/wire waveform as the primary MIHAD
-/// AUDIO story/horror/music visualizer.
+/// It draws independent vertical sticks on one Flutter Canvas. In the default
+/// non-mirrored mode every bar has the same fixed bottom baseline and only
+/// the top Y changes from real decoded audio data.
 class PremiumSpectrumPainter extends VisualizerPainterDelegate
     with VisualizerPaintHelpers {
   final PremiumSpectrumStyle style;
@@ -409,9 +421,15 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
     VisualizerFrameData data,
     VisualizerSettings settings,
   ) {
-    final denseCount = _effectiveBarCount(size, settings);
-    final rawValues = _sourceValues(data, denseCount);
-    final values = _smoothValues(rawValues, settings.smoothing);
+    final effect = _effectFor(settings);
+    final denseCount = _effectiveBarCount(size, settings, effect);
+    final rawValues = _sourceValues(data, denseCount, effect);
+    final values = _smoothValues(
+      rawValues,
+      effect == VisualizerEffect.cinematicPulse
+          ? math.max(settings.smoothing, 0.74).toDouble()
+          : settings.smoothing,
+    );
     if (values.isEmpty) return;
 
     final rect = Offset.zero & size;
@@ -430,24 +448,13 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
         : (size.height - topPadding - baselinePadding) * settings.waveHeight;
     final maxHeight = math.max(1.0, availableHeight).toDouble();
     final spacing = size.width / denseCount;
-    final thinLimit = spacing * 0.58;
-    final styleWidthFactor = switch (style) {
-      PremiumSpectrumStyle.classic => 0.46,
-      PremiumSpectrumStyle.rounded => 0.42,
-      PremiumSpectrumStyle.neon => 0.34,
-      PremiumSpectrumStyle.cinematic => 0.30,
-      PremiumSpectrumStyle.horror => 0.20,
-      PremiumSpectrumStyle.thin => 0.18,
-      PremiumSpectrumStyle.minimal => 0.16,
-      PremiumSpectrumStyle.bass => 0.36,
-      PremiumSpectrumStyle.impact => 0.24,
-      PremiumSpectrumStyle.top => 0.26,
-      _ => widthFactor,
+    final gap = _gapPixels(settings, spacing, size);
+    final strokeWidth = _strokeWidth(settings, spacing, gap, effect);
+    final cap = switch (effect) {
+      VisualizerEffect.classicRadio => StrokeCap.butt,
+      VisualizerEffect.stepEqualizer => StrokeCap.butt,
+      _ => StrokeCap.round,
     };
-    final strokeWidth = math.min(
-      settings.barWidth.clamp(0.8, 5.0).toDouble(),
-      math.max(1.0, thinLimit * styleWidthFactor / 0.28).toDouble(),
-    ).clamp(0.8, math.max(0.9, spacing * 0.55)).toDouble();
 
     final envelope = (data.envelope == 0 ? data.amplitude : data.envelope)
         .clamp(0.0, 1.0)
@@ -464,25 +471,13 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
       (data.bands.length * 0.70).floor(),
       data.bands.length,
     );
+    final peakValues = _sourcePeakValues(data, denseCount, effect);
 
-    if (style == PremiumSpectrumStyle.cinematic) {
-      _paintCinematicUnderGlow(canvas, size, settings, baseline, rainbow);
-    }
-
-    final glowPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final corePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    final highlightPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
+    final sticks = <_StickGeometry>[];
     for (var i = 0; i < denseCount; i++) {
       final t = denseCount <= 1 ? 0.0 : i / (denseCount - 1);
       final value = values[i];
-      final height = _barHeight(
+      final h = _barHeight(
         t: t,
         value: value,
         envelope: envelope,
@@ -492,74 +487,79 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
         highs: highs,
         maxHeight: maxHeight,
         settings: settings,
+        effect: effect,
       );
-      final x = i * spacing + spacing / 2;
-      final color = _templateColor(settings, t, rainbow: rainbow, salt: i);
+      final peakValue = peakValues.isEmpty ? value : peakValues[i];
+      final peakHeight = _barHeight(
+        t: t,
+        value: math.max(value, peakValue).toDouble(),
+        envelope: math.max(envelope, peakValue * 0.75).toDouble(),
+        impact: 0,
+        bass: bass,
+        mids: mids,
+        highs: highs,
+        maxHeight: maxHeight,
+        settings: settings,
+        effect: effect,
+      );
+      sticks.add(
+        _StickGeometry(
+          x: i * spacing + spacing / 2,
+          height: h,
+          peakHeight: peakHeight,
+          t: t,
+        ),
+      );
+    }
 
-      if (settings.glowIntensity > 0.01 &&
-          style != PremiumSpectrumStyle.minimal) {
-        final glowWidth = (strokeWidth * (2.6 + settings.glowIntensity * 2.2))
-            .clamp(strokeWidth + 0.8, spacing * 1.35)
-            .toDouble();
-        glowPaint
-          ..strokeWidth = glowWidth
-          ..color = color.withValues(
-            alpha: (settings.waveOpacity *
-                    (0.14 + settings.glowIntensity * 0.24))
-                .clamp(0.0, 0.42)
-                .toDouble(),
-          )
-          ..shader = null
-          ..maskFilter = MaskFilter.blur(
-            BlurStyle.normal,
-            0.8 + settings.glowIntensity * 5.5,
-          );
-        _drawAnchoredStick(
-          canvas,
-          x,
-          baseline,
-          height,
-          mirrored,
-          topAnchored,
-          glowPaint,
-        );
-      }
+    if (effect == VisualizerEffect.cinematicPulse) {
+      _paintCinematicUnderGlow(canvas, size, settings, baseline, rainbow);
+    }
 
-      corePaint
-        ..strokeWidth = strokeWidth
-        ..color = color
-        ..shader = _barShader(rect, settings, t, rainbow: rainbow, salt: i)
-        ..maskFilter = null;
-      _drawAnchoredStick(
+    final effectiveGlow = _effectiveGlow(settings, denseCount);
+    if (effect == VisualizerEffect.stepEqualizer) {
+      _paintStepEqualizer(
         canvas,
-        x,
+        rect,
+        sticks,
         baseline,
-        height,
         mirrored,
         topAnchored,
-        corePaint,
+        strokeWidth,
+        maxHeight,
+        effectiveGlow,
+        rainbow,
+        settings,
       );
-
-      if (style == PremiumSpectrumStyle.neon ||
-          style == PremiumSpectrumStyle.cinematic ||
-          style == PremiumSpectrumStyle.horror) {
-        highlightPaint
-          ..strokeWidth = (strokeWidth * 0.34).clamp(0.55, 1.2).toDouble()
-          ..color = const Color(0xFFFFFFFF).withValues(
-            alpha: (settings.waveOpacity * 0.20).clamp(0.0, 1.0).toDouble(),
-          )
-          ..shader = null
-          ..maskFilter = null;
-        _drawAnchoredStick(
-          canvas,
-          x,
-          baseline,
-          height * 0.82,
-          mirrored,
-          topAnchored,
-          highlightPaint,
-        );
-      }
+    } else if (effect == VisualizerEffect.fadeTop) {
+      _paintFadeTopBars(
+        canvas,
+        rect,
+        sticks,
+        baseline,
+        mirrored,
+        topAnchored,
+        strokeWidth,
+        cap,
+        effectiveGlow,
+        rainbow,
+        settings,
+      );
+    } else {
+      _paintContinuousSticks(
+        canvas,
+        rect,
+        sticks,
+        baseline,
+        mirrored,
+        topAnchored,
+        strokeWidth,
+        cap,
+        effectiveGlow,
+        rainbow,
+        settings,
+        effect,
+      );
     }
 
     if (settings.centerLineEnabled) {
@@ -580,51 +580,133 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
     }
   }
 
-  int _effectiveBarCount(Size size, VisualizerSettings settings) {
-    final requested = barCount ?? settings.barCount;
-    final densityTarget = switch (settings.density) {
-      VisualizerDensity.low => 56,
-      VisualizerDensity.medium => 72,
-      VisualizerDensity.high => 96,
-      VisualizerDensity.ultra => 132,
-    };
-    final styleMinimum = switch (style) {
-      PremiumSpectrumStyle.thin => 96,
-      PremiumSpectrumStyle.minimal => 64,
-      PremiumSpectrumStyle.classic => 56,
-      PremiumSpectrumStyle.bass => 64,
-      PremiumSpectrumStyle.horror => 88,
-      PremiumSpectrumStyle.story => 88,
-      PremiumSpectrumStyle.cinematic => 96,
-      PremiumSpectrumStyle.rainbow => 100,
-      _ => 72,
-    };
-    final mobileMax = size.width < 720 ? 100 : 180;
-    final desired = math.max(requested, math.max(densityTarget, styleMinimum));
-    return desired.clamp(36, mobileMax).toInt();
+  VisualizerEffect _effectFor(VisualizerSettings settings) {
+    if (style == PremiumSpectrumStyle.classic) {
+      return VisualizerEffect.classicRadio;
+    }
+    if (style == PremiumSpectrumStyle.rounded || style == PremiumSpectrumStyle.neon) {
+      return settings.visualizerEffect == VisualizerEffect.classicRadio
+          ? VisualizerEffect.softBars
+          : settings.visualizerEffect;
+    }
+    if (style == PremiumSpectrumStyle.horror &&
+        settings.visualizerEffect == VisualizerEffect.softBars) {
+      return VisualizerEffect.centerGlow;
+    }
+    if (style == PremiumSpectrumStyle.cinematic &&
+        settings.visualizerEffect == VisualizerEffect.softBars) {
+      return VisualizerEffect.cinematicPulse;
+    }
+    return settings.visualizerEffect;
   }
 
-  List<double> _sourceValues(VisualizerFrameData data, int count) {
-    switch (source) {
-      case PremiumSpectrumSource.waveform:
-        final sourceValues = data.waveformSamples.isNotEmpty
-            ? data.waveformSamples
-            : (data.bands.isNotEmpty ? data.bands : const <double>[]);
-        return resample(sourceValues, count);
-      case PremiumSpectrumSource.spectrum:
-        return resample(data.bands, count);
-      case PremiumSpectrumSource.cinematic:
-        final wave = resample(
-          data.waveformSamples.isNotEmpty ? data.waveformSamples : data.bands,
-          count,
-        );
-        final spectrum = resample(data.bands, count);
-        return List<double>.generate(count, (i) {
-          final w = i < wave.length ? wave[i] : 0.0;
-          final s = i < spectrum.length ? spectrum[i] : 0.0;
-          return (w * 0.68 + s * 0.32).clamp(0.0, 1.0).toDouble();
-        });
+  int _effectiveBarCount(
+    Size size,
+    VisualizerSettings settings,
+    VisualizerEffect effect,
+  ) {
+    final densityDefault = settings.density.defaultBars;
+    final requested = settings.barCount <= 0 ? densityDefault : settings.barCount;
+    var desired = requested.clamp(24, 120).toInt();
+    if (effect == VisualizerEffect.cinematicPulse) {
+      desired = desired.clamp(20, 40).toInt();
     }
+    if (style == PremiumSpectrumStyle.minimal) {
+      desired = math.min(desired, 40).toInt();
+    }
+    final maxBars = size.width < 720 ? 80 : 120;
+    return desired.clamp(20, maxBars).toInt();
+  }
+
+  double _gapPixels(
+    VisualizerSettings settings,
+    double spacing,
+    Size size,
+  ) {
+    final base = switch (settings.barGap) {
+      VisualizerBarGap.small => 2.0,
+      VisualizerBarGap.medium => 4.0,
+      VisualizerBarGap.large => 6.0,
+    };
+    final scaled = base * (size.width / 360).clamp(0.75, 1.25).toDouble();
+    return math.min(spacing * 0.72, scaled).clamp(0.8, spacing * 0.80).toDouble();
+  }
+
+  double _strokeWidth(
+    VisualizerSettings settings,
+    double spacing,
+    double gap,
+    VisualizerEffect effect,
+  ) {
+    final effectBoost = switch (effect) {
+      VisualizerEffect.cinematicPulse => 1.35,
+      VisualizerEffect.stepEqualizer => 1.15,
+      VisualizerEffect.doubleHeight => 1.05,
+      _ => 1.0,
+    };
+    final requested = (settings.barWidth * effectBoost).clamp(0.8, 6.0).toDouble();
+    final maxWidth = math.max(0.8, spacing - gap).toDouble();
+    return math.min(requested, maxWidth).clamp(0.75, 6.0).toDouble();
+  }
+
+  double _effectiveGlow(VisualizerSettings settings, int count) {
+    final countReduction = count > 70 ? 0.58 : (count > 55 ? 0.78 : 1.0);
+    return (settings.glowIntensity * countReduction).clamp(0.0, 1.0).toDouble();
+  }
+
+  List<double> _sourceValues(
+    VisualizerFrameData data,
+    int count,
+    VisualizerEffect effect,
+  ) {
+    final sourceValues = switch (source) {
+      PremiumSpectrumSource.waveform => data.waveformSamples.isNotEmpty
+          ? data.waveformSamples
+          : (data.bands.isNotEmpty ? data.bands : const <double>[]),
+      PremiumSpectrumSource.spectrum => data.bands,
+      PremiumSpectrumSource.cinematic => data.waveformSamples.isNotEmpty
+          ? _blendLists(data.waveformSamples, data.bands, count)
+          : data.bands,
+    };
+    final values = resample(sourceValues, count);
+    if (effect != VisualizerEffect.randomizedGroups || values.length < 3) {
+      return values;
+    }
+    final organic = List<double>.filled(values.length, 0.0);
+    for (var i = 0; i < values.length; i++) {
+      final offset = (_hashUnit(i) * 5).floor() - 2;
+      final neighbor = values[(i + offset).clamp(0, values.length - 1).toInt()];
+      final factor = 0.84 + _hashUnit(i + 17) * 0.30;
+      organic[i] = (values[i] * 0.78 + neighbor * 0.22) * factor;
+    }
+    return organic;
+  }
+
+  List<double> _sourcePeakValues(
+    VisualizerFrameData data,
+    int count,
+    VisualizerEffect effect,
+  ) {
+    final sourceValues = switch (source) {
+      PremiumSpectrumSource.waveform => data.peakWaveformSamples.isNotEmpty
+          ? data.peakWaveformSamples
+          : (data.waveformSamples.isNotEmpty ? data.waveformSamples : data.bands),
+      PremiumSpectrumSource.spectrum => data.peakBands.isNotEmpty ? data.peakBands : data.bands,
+      PremiumSpectrumSource.cinematic => data.peakWaveformSamples.isNotEmpty
+          ? _blendLists(data.peakWaveformSamples, data.peakBands, count)
+          : (data.waveformSamples.isNotEmpty ? data.waveformSamples : data.bands),
+    };
+    return resample(sourceValues, count);
+  }
+
+  List<double> _blendLists(List<double> a, List<double> b, int count) {
+    final wave = resample(a, count);
+    final spectrum = resample(b, count);
+    return List<double>.generate(count, (i) {
+      final w = i < wave.length ? wave[i] : 0.0;
+      final s = i < spectrum.length ? spectrum[i] : 0.0;
+      return (w * 0.68 + s * 0.32).clamp(0.0, 1.0).toDouble();
+    });
   }
 
   double _barHeight({
@@ -637,6 +719,7 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
     required double highs,
     required double maxHeight,
     required VisualizerSettings settings,
+    required VisualizerEffect effect,
   }) {
     final bassWeight = math.pow(1 - t, 1.45).toDouble();
     final midWeight = (1 - (t - 0.52).abs() * 2.15).clamp(0.0, 1.0).toDouble();
@@ -647,11 +730,14 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
         .clamp(0.0, 1.0)
         .toDouble();
 
-    final sourceBoost = switch (source) {
+    var sourceBoost = switch (source) {
       PremiumSpectrumSource.waveform => value * (0.92 + envelope * 0.35),
       PremiumSpectrumSource.spectrum => value * 0.92 + spectrumBlend * 0.55,
       PremiumSpectrumSource.cinematic => value * 0.78 + spectrumBlend * 0.42,
     };
+    if (effect == VisualizerEffect.cinematicPulse) {
+      sourceBoost = value * 0.34 + envelope * 0.44 + impact * 0.48;
+    }
     final styleBoost = switch (style) {
       PremiumSpectrumStyle.horror => 1.10,
       PremiumSpectrumStyle.impact => 1.18,
@@ -661,11 +747,19 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
       PremiumSpectrumStyle.cinematic => 0.90,
       _ => 1.0,
     };
+    final effectBoost = switch (effect) {
+      VisualizerEffect.centerGlow => 0.82 +
+          math.exp(-math.pow((t - 0.50) / 0.34, 2).toDouble()) * 0.34,
+      VisualizerEffect.cinematicPulse => 0.82,
+      VisualizerEffect.stepEqualizer => 0.95,
+      VisualizerEffect.fadeTop => 1.04,
+      _ => 1.0,
+    };
     final impactCenter = switch (style) {
       PremiumSpectrumStyle.horror => 0.42,
       PremiumSpectrumStyle.impact => 0.50,
       PremiumSpectrumStyle.bass => 0.20,
-      _ => 0.38,
+      _ => source == PremiumSpectrumSource.spectrum ? 0.22 : 0.42,
     };
     final impactWidth = style == PremiumSpectrumStyle.horror ? 0.22 : 0.30;
     final impactShape = math.exp(
@@ -681,17 +775,22 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
         impact * settings.impactSensitivity * impactShape * impactScale;
 
     final sensitivity = settings.sensitivity.clamp(0.05, 10.0).toDouble();
-    final driven = (sourceBoost * styleBoost * sensitivity +
-            envelope * 0.08 +
+    final driven = (sourceBoost * styleBoost * effectBoost * sensitivity +
+            envelope * 0.06 +
             impactBoost)
         .clamp(0.0, 1.85)
         .toDouble();
-    final curve = switch (style) {
-      PremiumSpectrumStyle.horror => 0.58,
-      PremiumSpectrumStyle.impact => 0.54,
-      PremiumSpectrumStyle.minimal => 0.86,
-      PremiumSpectrumStyle.classic => 0.74,
-      _ => 0.68,
+    final curve = switch (effect) {
+      VisualizerEffect.cinematicPulse => 0.92,
+      VisualizerEffect.stepEqualizer => 0.78,
+      VisualizerEffect.peakHold => 0.66,
+      _ => switch (style) {
+          PremiumSpectrumStyle.horror => 0.58,
+          PremiumSpectrumStyle.impact => 0.54,
+          PremiumSpectrumStyle.minimal => 0.86,
+          PremiumSpectrumStyle.classic => 0.74,
+          _ => 0.68,
+        },
     };
     final shaped = math.pow(driven, curve)
         .toDouble()
@@ -701,12 +800,328 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
       PremiumSpectrumStyle.minimal => 0.010,
       PremiumSpectrumStyle.thin => 0.012,
       PremiumSpectrumStyle.horror => 0.014,
-      _ => 0.018,
+      _ => effect == VisualizerEffect.cinematicPulse ? 0.012 : 0.018,
     };
     final floor = maxHeight * silenceFloor;
     return (floor + shaped * (maxHeight - floor))
         .clamp(1.0, maxHeight)
         .toDouble();
+  }
+
+  void _paintContinuousSticks(
+    Canvas canvas,
+    Rect rect,
+    List<_StickGeometry> sticks,
+    double baseline,
+    bool mirrored,
+    bool topAnchored,
+    double strokeWidth,
+    StrokeCap cap,
+    double effectiveGlow,
+    bool rainbow,
+    VisualizerSettings settings,
+    VisualizerEffect effect,
+  ) {
+    final path = Path();
+    final secondaryPath = Path();
+    final centerGlowPath = Path();
+    for (var i = 0; i < sticks.length; i++) {
+      final stick = sticks[i];
+      _addAnchoredStick(path, stick.x, baseline, stick.height, mirrored, topAnchored);
+      if (effect == VisualizerEffect.doubleHeight) {
+        final secondary = (stick.height * (0.48 + _hashUnit(i + 31) * 0.28) +
+                stick.peakHeight * 0.22)
+            .clamp(1.0, stick.peakHeight)
+            .toDouble();
+        final offset = strokeWidth * 0.90;
+        _addAnchoredStick(
+          secondaryPath,
+          stick.x + offset,
+          baseline,
+          secondary,
+          mirrored,
+          topAnchored,
+        );
+      }
+      if (effect == VisualizerEffect.centerGlow) {
+        final centerWeight = math.exp(-math.pow((stick.t - 0.5) / 0.30, 2).toDouble());
+        if (centerWeight > 0.32) {
+          _addAnchoredStick(
+            centerGlowPath,
+            stick.x,
+            baseline,
+            stick.height,
+            mirrored,
+            topAnchored,
+          );
+        }
+      }
+    }
+
+    if (effectiveGlow > 0.01 && style != PremiumSpectrumStyle.minimal) {
+      final glow = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = cap
+        ..strokeWidth = (strokeWidth * (2.0 + effectiveGlow * 1.8))
+            .clamp(strokeWidth + 0.7, strokeWidth + 6.0)
+            .toDouble()
+        ..shader = waveShader(settings, rect, rainbow: rainbow)
+        ..color = _templateColor(
+          settings,
+          0.5,
+          alphaMultiplier: 0.16 + effectiveGlow * 0.18,
+          rainbow: rainbow,
+        )
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 0.8 + effectiveGlow * 4.2);
+      canvas.drawPath(path, glow);
+
+      if (effect == VisualizerEffect.centerGlow && !centerGlowPath.getBounds().isEmpty) {
+        final centerGlow = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeCap = cap
+          ..strokeWidth = (strokeWidth * (2.8 + effectiveGlow * 2.2))
+              .clamp(strokeWidth + 1.0, strokeWidth + 8.0)
+              .toDouble()
+          ..shader = waveShader(settings, rect, rainbow: rainbow)
+          ..color = _templateColor(
+            settings,
+            0.5,
+            alphaMultiplier: 0.18 + effectiveGlow * 0.22,
+            rainbow: rainbow,
+          )
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1.2 + effectiveGlow * 5.0);
+        canvas.drawPath(centerGlowPath, centerGlow);
+      }
+    }
+
+    final core = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = cap
+      ..strokeWidth = strokeWidth
+      ..shader = waveShader(settings, rect, rainbow: rainbow)
+      ..color = _templateColor(settings, 0.5, rainbow: rainbow);
+    canvas.drawPath(path, core);
+
+    if (!secondaryPath.getBounds().isEmpty) {
+      final secondary = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeWidth = (strokeWidth * 0.48).clamp(0.75, 2.4).toDouble()
+        ..shader = waveShader(settings, rect, rainbow: rainbow, salt: 5)
+        ..color = _templateColor(
+          settings,
+          0.7,
+          alphaMultiplier: 0.72,
+          rainbow: rainbow,
+          salt: 5,
+        );
+      canvas.drawPath(secondaryPath, secondary);
+    }
+
+    if (settings.peakHoldEnabled || effect == VisualizerEffect.peakHold) {
+      _paintPeakMarkers(
+        canvas,
+        sticks,
+        baseline,
+        mirrored,
+        topAnchored,
+        strokeWidth,
+        settings,
+        rainbow,
+      );
+    }
+  }
+
+  void _paintFadeTopBars(
+    Canvas canvas,
+    Rect rect,
+    List<_StickGeometry> sticks,
+    double baseline,
+    bool mirrored,
+    bool topAnchored,
+    double strokeWidth,
+    StrokeCap cap,
+    double effectiveGlow,
+    bool rainbow,
+    VisualizerSettings settings,
+  ) {
+    if (effectiveGlow > 0.01) {
+      final path = Path();
+      for (final stick in sticks) {
+        _addAnchoredStick(path, stick.x, baseline, stick.height, mirrored, topAnchored);
+      }
+      final glow = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = cap
+        ..strokeWidth = (strokeWidth * 2.2).clamp(strokeWidth + 0.7, strokeWidth + 5.0).toDouble()
+        ..shader = waveShader(settings, rect, rainbow: rainbow)
+        ..color = _templateColor(settings, 0.5, alphaMultiplier: 0.20, rainbow: rainbow)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 0.8 + effectiveGlow * 3.5);
+      canvas.drawPath(path, glow);
+    }
+
+    for (final stick in sticks) {
+      final top = topAnchored ? baseline + stick.height : baseline - stick.height;
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = cap
+        ..strokeWidth = strokeWidth
+        ..shader = Gradient.linear(
+          Offset(stick.x, baseline),
+          Offset(stick.x, top),
+          [
+            _templateColor(settings, stick.t, rainbow: rainbow),
+            _templateColor(
+              settings,
+              1 - stick.t,
+              alphaMultiplier: 0.28,
+              rainbow: rainbow,
+            ),
+          ],
+        );
+      _drawAnchoredStick(
+        canvas,
+        stick.x,
+        baseline,
+        stick.height,
+        mirrored,
+        topAnchored,
+        paint,
+      );
+    }
+  }
+
+  void _paintStepEqualizer(
+    Canvas canvas,
+    Rect rect,
+    List<_StickGeometry> sticks,
+    double baseline,
+    bool mirrored,
+    bool topAnchored,
+    double strokeWidth,
+    double maxHeight,
+    double effectiveGlow,
+    bool rainbow,
+    VisualizerSettings settings,
+  ) {
+    if (effectiveGlow > 0.01) {
+      final glowPath = Path();
+      for (final stick in sticks) {
+        _addAnchoredStick(
+          glowPath,
+          stick.x,
+          baseline,
+          stick.height,
+          mirrored,
+          topAnchored,
+        );
+      }
+      final glow = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.butt
+        ..strokeWidth = (strokeWidth * 1.8).clamp(strokeWidth + 0.5, strokeWidth + 4.0).toDouble()
+        ..shader = waveShader(settings, rect, rainbow: rainbow)
+        ..color = _templateColor(settings, 0.5, alphaMultiplier: 0.16, rainbow: rainbow)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 0.6 + effectiveGlow * 3.0);
+      canvas.drawPath(glowPath, glow);
+    }
+
+    final segmentGap = math.max(1.2, strokeWidth * 0.65).toDouble();
+    final segmentHeight = math.max(2.0, strokeWidth * 1.35).toDouble();
+    final maxSegments = math.max(3, (maxHeight / (segmentHeight + segmentGap)).floor());
+    final paint = Paint()..style = PaintingStyle.fill;
+    for (final stick in sticks) {
+      final active = (stick.height / maxHeight * maxSegments)
+          .ceil()
+          .clamp(1, maxSegments)
+          .toInt();
+      paint
+        ..shader = null
+        ..color = _templateColor(settings, stick.t, rainbow: rainbow);
+      for (var s = 0; s < active; s++) {
+        final offset = s * (segmentHeight + segmentGap);
+        if (mirrored) {
+          _drawSegment(canvas, stick.x, baseline - offset - segmentHeight, strokeWidth, segmentHeight, paint);
+          _drawSegment(canvas, stick.x, baseline + offset, strokeWidth, segmentHeight, paint);
+        } else if (topAnchored) {
+          _drawSegment(canvas, stick.x, baseline + offset, strokeWidth, segmentHeight, paint);
+        } else {
+          _drawSegment(canvas, stick.x, baseline - offset - segmentHeight, strokeWidth, segmentHeight, paint);
+        }
+      }
+    }
+  }
+
+  void _drawSegment(
+    Canvas canvas,
+    double x,
+    double y,
+    double width,
+    double height,
+    Paint paint,
+  ) {
+    final rect = Rect.fromLTWH(x - width / 2, y, width, height);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(width * 0.30)),
+      paint,
+    );
+  }
+
+  void _paintPeakMarkers(
+    Canvas canvas,
+    List<_StickGeometry> sticks,
+    double baseline,
+    bool mirrored,
+    bool topAnchored,
+    double strokeWidth,
+    VisualizerSettings settings,
+    bool rainbow,
+  ) {
+    final marker = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = math.max(1.0, strokeWidth * 0.56).toDouble();
+    for (final stick in sticks) {
+      marker.color = _templateColor(
+        settings,
+        stick.t,
+        alphaMultiplier: 0.88,
+        rainbow: rainbow,
+      );
+      final len = (strokeWidth * 2.4).clamp(3.0, 12.0).toDouble();
+      if (mirrored) {
+        final topY = baseline - stick.peakHeight;
+        final bottomY = baseline + stick.peakHeight;
+        canvas.drawLine(Offset(stick.x - len / 2, topY), Offset(stick.x + len / 2, topY), marker);
+        canvas.drawLine(Offset(stick.x - len / 2, bottomY), Offset(stick.x + len / 2, bottomY), marker);
+      } else if (topAnchored) {
+        final y = baseline + stick.peakHeight;
+        canvas.drawLine(Offset(stick.x - len / 2, y), Offset(stick.x + len / 2, y), marker);
+      } else {
+        final y = baseline - stick.peakHeight;
+        canvas.drawLine(Offset(stick.x - len / 2, y), Offset(stick.x + len / 2, y), marker);
+      }
+    }
+  }
+
+  void _addAnchoredStick(
+    Path path,
+    double x,
+    double baseline,
+    double height,
+    bool mirrored,
+    bool topAnchored,
+  ) {
+    if (mirrored) {
+      path.moveTo(x, baseline - height);
+      path.lineTo(x, baseline + height);
+    } else if (topAnchored) {
+      path.moveTo(x, baseline);
+      path.lineTo(x, baseline + height);
+    } else {
+      path.moveTo(x, baseline - height);
+      path.lineTo(x, baseline);
+    }
   }
 
   void _drawAnchoredStick(
@@ -729,32 +1144,6 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
     } else {
       canvas.drawLine(Offset(x, baseline - height), Offset(x, baseline), paint);
     }
-  }
-
-  Shader? _barShader(
-    Rect rect,
-    VisualizerSettings settings,
-    double t, {
-    required bool rainbow,
-    int salt = 0,
-  }) {
-    if (settings.colorMode == VisualizerColorMode.single && !rainbow) {
-      return null;
-    }
-    return Gradient.linear(
-      rect.bottomCenter,
-      rect.topCenter,
-      [
-        _templateColor(
-          settings,
-          t,
-          alphaMultiplier: 0.70,
-          rainbow: rainbow,
-          salt: salt,
-        ),
-        _templateColor(settings, 1 - t, rainbow: rainbow, salt: salt),
-      ],
-    );
   }
 
   Color _templateColor(
@@ -803,13 +1192,19 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
         rainbow: rainbow,
       )
       ..maskFilter = settings.glowIntensity > 0.05
-          ? MaskFilter.blur(BlurStyle.normal, 3 + settings.glowIntensity * 10)
+          ? MaskFilter.blur(BlurStyle.normal, 3 + settings.glowIntensity * 8)
           : null;
     canvas.drawLine(
       Offset(size.width * 0.04, baseline),
       Offset(size.width * 0.96, baseline),
       beam,
     );
+  }
+
+  double _hashUnit(int index) {
+    var x = (index + 37) * 1103515245 + 12345;
+    x = x & 0x7fffffff;
+    return (x % 1000) / 1000.0;
   }
 
   List<double> _smoothValues(List<double> input, double smoothing) {
