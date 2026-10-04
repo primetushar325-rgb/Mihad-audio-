@@ -161,30 +161,25 @@ class ExportService {
       (layer) => layer.visible && layer.cues.any((cue) => cue.visible),
     );
     final delegate = painterFor(settings.template);
-    final bounds = hasSubtitles
-        ? ui.Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble())
-        : resolveVisualizerBounds(
-            settings,
-            outW.toDouble(),
-            outH.toDouble(),
-          );
-    final overlayLeft = bounds.left.round().clamp(0, outW - 1).toInt();
-    final overlayTop = bounds.top.round().clamp(0, outH - 1).toInt();
-    final overlayWidth = bounds.width
-        .round()
-        .clamp(1, outW - overlayLeft)
-        .toInt();
-    final overlayHeight = bounds.height
-        .round()
-        .clamp(1, outH - overlayTop)
-        .toInt();
-    final overlaySize = ui.Size(overlayWidth.toDouble(), overlayHeight.toDouble());
-    final localSettings = settings.copyWith(posX: 0, posY: 0, width: 1, height: 1);
     final visualizerBounds = resolveVisualizerBounds(
       settings,
       outW.toDouble(),
       outH.toDouble(),
     );
+    final overlayLeft = hasSubtitles
+        ? 0
+        : visualizerBounds.left.round().clamp(0, outW - 1).toInt();
+    final overlayTop = hasSubtitles
+        ? 0
+        : visualizerBounds.top.round().clamp(0, outH - 1).toInt();
+    final overlayWidth = hasSubtitles
+        ? outW
+        : visualizerBounds.width.round().clamp(1, outW - overlayLeft).toInt();
+    final overlayHeight = hasSubtitles
+        ? outH
+        : visualizerBounds.height.round().clamp(1, outH - overlayTop).toInt();
+    final overlaySize = ui.Size(overlayWidth.toDouble(), overlayHeight.toDouble());
+    final localSettings = settings.copyWith(posX: 0, posY: 0, width: 1, height: 1);
     final visualizerSize = ui.Size(
       visualizerBounds.width.roundToDouble().clamp(1, outW.toDouble()).toDouble(),
       visualizerBounds.height.roundToDouble().clamp(1, outH.toDouble()).toDouble(),
