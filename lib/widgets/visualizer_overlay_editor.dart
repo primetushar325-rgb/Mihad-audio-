@@ -9,9 +9,12 @@ import '../visualizers/visualizer_canvas_painter.dart';
 import '../visualizers/visualizer_painter_base.dart';
 
 /// Renders the visualizer overlay on top of the video preview and lets
-/// the user drag it to reposition, and drag its corner handle to resize -
-/// directly updating [settings] (as fractions of the canvas), which is
-/// the exact same data structure used by the export renderer.
+/// the user drag it to reposition, and drag its corner handle to resize.
+///
+/// Drag/resize uses a local draft while the pointer is moving, then commits
+/// the final normalized values to the project once the gesture ends. This
+/// avoids expensive project persistence on every pointer frame while keeping
+/// preview/export WYSIWYG.
 class VisualizerOverlayEditor extends StatefulWidget {
   final VideoPlayerController controller;
   final AudioAnalysisData analysisData;
@@ -34,13 +37,44 @@ class VisualizerOverlayEditor extends StatefulWidget {
 }
 
 class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
+  late VisualizerSettings _draftSettings;
+  bool _interacting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _draftSettings = widget.settings;
+  }
+
+  @override
+  void didUpdateWidget(covariant VisualizerOverlayEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_interacting && !identical(oldWidget.settings, widget.settings)) {
+      _draftSettings = widget.settings;
+    }
+  }
+
+  void _setDraft(VisualizerSettings settings) {
+    if (!widget.editable) return;
+    setState(() {
+      _interacting = true;
+      _draftSettings = settings;
+    });
+  }
+
+  void _commitDraft() {
+    if (!_interacting) return;
+    _interacting = false;
+    widget.onChanged(_draftSettings);
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final canvasW = constraints.maxWidth <= 0 ? 1.0 : constraints.maxWidth;
         final canvasH = constraints.maxHeight <= 0 ? 1.0 : constraints.maxHeight;
-        final s = widget.settings;
+        final s = _interacting ? _draftSettings : widget.settings;
         final bounds = resolveVisualizerBounds(s, canvasW, canvasH);
         final left = bounds.left;
         final top = bounds.top;
@@ -91,8 +125,10 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
                 onPanUpdate: widget.editable
-                    ? (details) => widget.onChanged(movedBy(details.delta))
+                    ? (details) => _setDraft(movedBy(details.delta))
                     : null,
+                onPanEnd: widget.editable ? (_) => _commitDraft() : null,
+                onPanCancel: widget.editable ? _commitDraft : null,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -145,7 +181,8 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
                         child: _OverlayHandle(
                           icon: Icons.drag_indicator,
                           label: 'Move visualizer',
-                          onPanUpdate: (delta) => widget.onChanged(movedBy(delta)),
+                          onPanUpdate: (delta) => _setDraft(movedBy(delta)),
+                          onPanEnd: _commitDraft,
                         ),
                       ),
                       Positioned(
@@ -154,7 +191,8 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
                         child: _OverlayHandle(
                           icon: Icons.open_in_full,
                           label: 'Resize visualizer',
-                          onPanUpdate: (delta) => widget.onChanged(resizedBy(delta)),
+                          onPanUpdate: (delta) => _setDraft(resizedBy(delta)),
+                          onPanEnd: _commitDraft,
                         ),
                       ),
                     ],
@@ -173,11 +211,13 @@ class _OverlayHandle extends StatelessWidget {
   final IconData icon;
   final String label;
   final ValueChanged<Offset> onPanUpdate;
+  final VoidCallback onPanEnd;
 
   const _OverlayHandle({
     required this.icon,
     required this.label,
     required this.onPanUpdate,
+    required this.onPanEnd,
   });
 
   @override
@@ -187,6 +227,8 @@ class _OverlayHandle extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onPanUpdate: (details) => onPanUpdate(details.delta),
+        onPanEnd: (_) => onPanEnd(),
+        onPanCancel: onPanEnd,
         child: Container(
           width: 26,
           height: 26,
@@ -195,8 +237,8 @@ class _OverlayHandle extends StatelessWidget {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: MihadColors.accentPrimary.withValues(alpha: 0.45),
-                blurRadius: 12,
+                color: MihadColors.accentPrimary.withValues(alpha: 0.25),
+                blurRadius: 8,
               ),
             ],
           ),

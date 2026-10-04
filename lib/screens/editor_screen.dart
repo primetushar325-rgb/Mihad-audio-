@@ -569,6 +569,10 @@ class _AppearanceSection extends StatelessWidget {
                   label: Text('Gradient'),
                 ),
                 ButtonSegment(
+                  value: VisualizerColorMode.rainbow,
+                  label: Text('Rainbow'),
+                ),
+                ButtonSegment(
                   value: VisualizerColorMode.random,
                   label: Text('Random'),
                 ),
@@ -775,6 +779,24 @@ class _AppearanceSection extends StatelessWidget {
               2.5,
               (v) => update((s) => s.copyWith(sensitivity: v)),
               valueLabel: '${settings.sensitivity.toStringAsFixed(2)}×',
+            ),
+            slider(
+              'Bar density',
+              settings.barCount.toDouble(),
+              24,
+              96,
+              (v) => update((s) => s.copyWith(barCount: v.round())),
+              valueLabel: '${settings.barCount} bars',
+              divisions: 72,
+            ),
+            slider(
+              'Smoothing',
+              settings.smoothing,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(smoothing: v)),
+              valueLabel: '${(settings.smoothing * 100).round()}%',
+              divisions: 100,
             ),
             sectionLabel('Alignment'),
             SegmentedButton<VisualizerAlignment>(

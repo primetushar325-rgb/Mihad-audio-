@@ -152,6 +152,9 @@ mixin VisualizerPaintHelpers {
             clampedT,
           )!;
           break;
+        case VisualizerColorMode.rainbow:
+          base = _hsvToColor((clampedT * 330 + salt * 17) % 360, 0.82, 1.0);
+          break;
         case VisualizerColorMode.random:
           final random = _randomColor(settings, clampedT, salt);
           final gradient = Color.lerp(
@@ -176,7 +179,7 @@ mixin VisualizerPaintHelpers {
     bool rainbow = false,
     int salt = 0,
   }) {
-    if (rainbow) {
+    if (rainbow || settings.colorMode == VisualizerColorMode.rainbow) {
       return Gradient.linear(
         rect.centerLeft,
         rect.centerRight,
@@ -198,6 +201,7 @@ mixin VisualizerPaintHelpers {
           colorAt(settings, 0),
         ]);
       case VisualizerColorMode.gradient:
+      case VisualizerColorMode.rainbow:
       case VisualizerColorMode.random:
         return Gradient.linear(
           rect.centerLeft,

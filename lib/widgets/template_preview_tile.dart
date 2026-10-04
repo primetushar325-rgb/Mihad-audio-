@@ -95,7 +95,9 @@ class _TemplatePreviewTileState extends State<TemplatePreviewTile>
       backgroundOpacity: 0.52,
       cornerRadius: 0.18,
       glowIntensity: 0.45,
-      barWidth: 5.5,
+      barWidth: 4.0,
+      barCount: 64,
+      smoothing: 0.45,
     );
     final listenable = hasLiveAudio ? widget.controller! : _demoController;
 

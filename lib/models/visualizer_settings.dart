@@ -4,7 +4,7 @@ import 'visualizer_template.dart';
 
 enum VisualizerAlignment { left, center, right }
 
-enum VisualizerColorMode { single, gradient, random }
+enum VisualizerColorMode { single, gradient, rainbow, random }
 
 enum ExportAspectRatio { ratio16x9, ratio9x16, ratio1x1, original }
 
@@ -104,6 +104,14 @@ class VisualizerSettings {
   /// canvas; scaled proportionally for other output sizes.
   double barWidth;
 
+  /// Number of spectrum columns to draw for dense bar/equalizer templates.
+  /// Clamped to a mobile-friendly range by the renderer.
+  int barCount;
+
+  /// 0.0 - 1.0 spatial smoothing across neighboring frequency bars. This
+  /// keeps dense spectrums fluid without adding a separate animation loop.
+  double smoothing;
+
   /// User-facing alias for [barWidth].
   double get waveThickness => barWidth;
 
@@ -111,7 +119,7 @@ class VisualizerSettings {
   ExportAspectRatio aspectRatio;
 
   VisualizerSettings({
-    this.template = VisualizerTemplateType.equalizerBars,
+    this.template = VisualizerTemplateType.spectrumBars,
     this.posX = 0.1,
     this.posY = 0.65,
     this.width = 0.8,
@@ -130,6 +138,8 @@ class VisualizerSettings {
     double? waveOpacity,
     this.glowIntensity = 0.35,
     this.sensitivity = 1.0,
+    this.barCount = 80,
+    this.smoothing = 0.45,
     double? barWidth,
     double? waveThickness,
     this.alignment = VisualizerAlignment.center,
@@ -139,7 +149,7 @@ class VisualizerSettings {
        backgroundColorValue = backgroundColorValue ?? 0xFF000000,
        borderColorValue = borderColorValue ?? 0xFFFFFFFF,
        waveOpacity = (waveOpacity ?? opacity ?? 1.0).clamp(0.0, 1.0).toDouble(),
-       barWidth = (waveThickness ?? barWidth ?? 6.0)
+       barWidth = (waveThickness ?? barWidth ?? 4.0)
            .clamp(0.5, 80.0)
            .toDouble();
 
@@ -168,6 +178,8 @@ class VisualizerSettings {
     double? waveOpacity,
     double? glowIntensity,
     double? sensitivity,
+    int? barCount,
+    double? smoothing,
     double? barWidth,
     double? waveThickness,
     VisualizerAlignment? alignment,
@@ -192,6 +204,8 @@ class VisualizerSettings {
       waveOpacity: waveOpacity ?? opacity ?? this.waveOpacity,
       glowIntensity: glowIntensity ?? this.glowIntensity,
       sensitivity: sensitivity ?? this.sensitivity,
+      barCount: barCount ?? this.barCount,
+      smoothing: smoothing ?? this.smoothing,
       barWidth: waveThickness ?? barWidth ?? this.barWidth,
       alignment: alignment ?? this.alignment,
       aspectRatio: aspectRatio ?? this.aspectRatio,
@@ -226,6 +240,8 @@ class VisualizerSettings {
     'opacity': waveOpacity,
     'glowIntensity': glowIntensity,
     'sensitivity': sensitivity,
+    'barCount': barCount,
+    'smoothing': smoothing,
     'barWidth': barWidth,
     'waveThickness': barWidth,
     'alignment': alignment.name,
@@ -236,7 +252,7 @@ class VisualizerSettings {
     return VisualizerSettings(
       template: VisualizerTemplateType.values.firstWhere(
         (e) => e.name == json['template'],
-        orElse: () => VisualizerTemplateType.equalizerBars,
+        orElse: () => VisualizerTemplateType.spectrumBars,
       ),
       posX: _double(json['posX'], 0.1),
       posY: _double(json['posY'], 0.65),
@@ -272,7 +288,11 @@ class VisualizerSettings {
       sensitivity: _double(json['sensitivity'], 1.0)
           .clamp(0.05, 10.0)
           .toDouble(),
-      barWidth: _double(json['waveThickness'] ?? json['barWidth'], 6.0)
+      barCount: _int(json['barCount'], 80).clamp(16, 160).toInt(),
+      smoothing: _double(json['smoothing'], 0.45)
+          .clamp(0.0, 1.0)
+          .toDouble(),
+      barWidth: _double(json['waveThickness'] ?? json['barWidth'], 4.0)
           .clamp(0.5, 80.0)
           .toDouble(),
       alignment: VisualizerAlignment.values.firstWhere(

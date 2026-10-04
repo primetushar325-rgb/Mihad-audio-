@@ -302,34 +302,259 @@ class PremiumWavePainter extends VisualizerPainterDelegate
     VisualizerFrameData data,
     VisualizerSettings settings,
   ) {
-    final values = resample(data.bands, 72);
-    final midY = size.height / 2;
+    // Voice Wave is the one intentional waveform-line template. It still uses
+    // the actual analyzed audio bands/amplitude, but renders speech as a clean
+    // center-line waveform rather than a dense spectrum.
+    final samples = resample(data.bands, 72);
     final amp = (data.amplitude * settings.sensitivity)
         .clamp(0.0, 1.35)
         .toDouble();
     final rect = Offset.zero & size;
-    final spacing = size.width / values.length;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < values.length; i++) {
-      final t = i / (values.length - 1);
-      final value = (values[i] * settings.sensitivity)
-          .clamp(0.0, 1.3)
+    final midY = size.height / 2;
+    final path = Path();
+    for (var i = 0; i < samples.length; i++) {
+      final t = samples.length <= 1 ? 0.0 : i / (samples.length - 1);
+      final x = size.width * t;
+      final value = (samples[i] * settings.sensitivity)
+          .clamp(0.0, 1.25)
           .toDouble();
-      final h = (size.height * (0.05 + value * 0.55 * (0.45 + amp)))
-          .clamp(2.0, size.height)
-          .toDouble();
-      final x = i * spacing + spacing / 2;
-      paint
-        ..shader = waveShader(settings, rect, salt: i)
-        ..color = colorAt(settings, t, salt: i)
-        ..strokeWidth = scaledThickness(settings, size, 0.18)
-            .clamp(1.0, 6.0)
-            .toDouble();
-      canvas.drawLine(Offset(x, midY - h / 2), Offset(x, midY + h / 2), paint);
+      final sign = i.isEven ? 1.0 : -1.0;
+      final y = midY - sign * value * size.height * 0.38 * (0.35 + amp * 0.65);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        final prevX = size.width * (i - 1) / (samples.length - 1);
+        final cx = (prevX + x) / 2;
+        path.quadraticBezierTo(cx, y, x, y);
+      }
     }
-    _drawCenterLine(canvas, size, settings, alpha: 0.20);
+    if (settings.glowIntensity > 0.02) {
+      canvas.drawPath(
+        path,
+        strokePaint(
+          settings,
+          rect,
+          strokeWidth: scaledThickness(settings, size, 0.80),
+          alphaMultiplier: 0.35,
+          glow: true,
+        ),
+      );
+    }
+    canvas.drawPath(
+      path,
+      strokePaint(
+        settings,
+        rect,
+        strokeWidth: scaledThickness(settings, size, 0.34),
+      ),
+    );
+    final center = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = colorAt(settings, 0.5, alphaMultiplier: 0.22);
+    canvas.drawLine(Offset(0, midY), Offset(size.width, midY), center);
+  }
+}
+
+
+enum PremiumSpectrumStyle {
+  dense,
+  mirrored,
+  rainbow,
+  classic,
+  thin,
+  rounded,
+  neon,
+  cinematic,
+  bottom,
+  top,
+}
+
+/// Dense professional FFT spectrum/equalizer renderer. It intentionally
+/// draws one canvas pass of frequency bars from the already-analyzed audio
+/// frame instead of a continuous oscilloscope line. This is the default
+/// MIHAD AUDIO visualizer style used by preview and export.
+class PremiumSpectrumPainter extends VisualizerPainterDelegate
+    with VisualizerPaintHelpers {
+  final PremiumSpectrumStyle style;
+  final int? barCount;
+  final double widthFactor;
+
+  PremiumSpectrumPainter({
+    this.style = PremiumSpectrumStyle.dense,
+    this.barCount,
+    this.widthFactor = 0.34,
+  });
+
+  @override
+  void paint(
+    Canvas canvas,
+    Size size,
+    VisualizerFrameData data,
+    VisualizerSettings settings,
+  ) {
+    final denseCount = (barCount ?? settings.barCount).clamp(24, 96).toInt();
+    final values = _smoothValues(
+      resample(data.bands, denseCount),
+      settings.smoothing,
+    );
+    if (values.isEmpty) return;
+
+    final rect = Offset.zero & size;
+    final bass = bandAverage(data.bands, 0, (data.bands.length / 4).ceil());
+    final mids = bandAverage(
+      data.bands,
+      (data.bands.length * 0.25).floor(),
+      (data.bands.length * 0.70).ceil(),
+    );
+    final highs = bandAverage(
+      data.bands,
+      (data.bands.length * 0.70).floor(),
+      data.bands.length,
+    );
+    final amp = (data.amplitude * settings.sensitivity)
+        .clamp(0.0, 1.5)
+        .toDouble();
+
+    final mirrored = switch (style) {
+      PremiumSpectrumStyle.bottom => false,
+      PremiumSpectrumStyle.top => false,
+      PremiumSpectrumStyle.classic => false,
+      _ => true,
+    };
+    final rainbow = style == PremiumSpectrumStyle.rainbow ||
+        settings.colorMode == VisualizerColorMode.rainbow;
+    final rounded = style == PremiumSpectrumStyle.rounded ||
+        style == PremiumSpectrumStyle.neon ||
+        style == PremiumSpectrumStyle.dense ||
+        style == PremiumSpectrumStyle.mirrored ||
+        style == PremiumSpectrumStyle.rainbow ||
+        style == PremiumSpectrumStyle.cinematic;
+    final neon = style == PremiumSpectrumStyle.neon ||
+        style == PremiumSpectrumStyle.cinematic ||
+        settings.glowIntensity > 0.18;
+
+    final spacing = size.width / denseCount;
+    final userThickness = (settings.barWidth / 4.0).clamp(0.45, 2.2).toDouble();
+    final styleWidth = switch (style) {
+      PremiumSpectrumStyle.thin => 0.22,
+      PremiumSpectrumStyle.classic => 0.55,
+      PremiumSpectrumStyle.rounded => 0.50,
+      PremiumSpectrumStyle.neon => 0.36,
+      PremiumSpectrumStyle.cinematic => 0.30,
+      _ => widthFactor,
+    };
+    final barW = (spacing * styleWidth * userThickness)
+        .clamp(1.0, spacing * 0.88)
+        .toDouble();
+    final baseline = mirrored
+        ? size.height / 2
+        : (style == PremiumSpectrumStyle.top ? 0.0 : size.height);
+    final maxHalfHeight = mirrored ? size.height * 0.46 : size.height * 0.90;
+    final glowAlpha = (0.18 + settings.glowIntensity * 0.32).clamp(0.0, 0.45).toDouble();
+    final glowBlur = 1.5 + settings.glowIntensity.clamp(0.0, 1.0).toDouble() * 7.0;
+
+    if (style == PremiumSpectrumStyle.cinematic) {
+      final beam = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = colorAt(settings, 0.5, alphaMultiplier: 0.22, rainbow: rainbow)
+        ..maskFilter = settings.glowIntensity > 0.05
+            ? MaskFilter.blur(BlurStyle.normal, 4 + settings.glowIntensity * 14)
+            : null;
+      canvas.drawLine(
+        Offset(size.width * 0.04, baseline),
+        Offset(size.width * 0.96, baseline),
+        beam,
+      );
+    }
+
+    final glowPaint = Paint()..style = PaintingStyle.fill;
+    final fillPaint = Paint()..style = PaintingStyle.fill;
+
+    for (var i = 0; i < denseCount; i++) {
+      final t = denseCount <= 1 ? 0.0 : i / (denseCount - 1);
+      final band = values[i];
+      final bassWeight = math.pow(1 - t, 1.35).toDouble();
+      final midWeight = (1 - (t - 0.52).abs() * 2.2).clamp(0.0, 1.0).toDouble();
+      final highWeight = math.pow(t, 1.15).toDouble();
+      final driven = (band * 0.82 +
+              bass * bassWeight * 0.55 +
+              mids * midWeight * 0.22 +
+              highs * highWeight * 0.18 +
+              amp * 0.08)
+          .clamp(0.0, 1.65)
+          .toDouble();
+      final shaped = math.pow(driven, 0.72).toDouble();
+      final minVisible = style == PremiumSpectrumStyle.thin ? 0.015 : 0.025;
+      final h = (maxHalfHeight * (minVisible + shaped * 0.98))
+          .clamp(1.0, maxHalfHeight)
+          .toDouble();
+      final x = i * spacing + (spacing - barW) / 2;
+      final barRect = mirrored
+          ? Rect.fromLTWH(x, baseline - h, barW, h * 2)
+          : style == PremiumSpectrumStyle.top
+              ? Rect.fromLTWH(x, 0, barW, h)
+              : Rect.fromLTWH(x, size.height - h, barW, h);
+      final radius = rounded ? Radius.circular(barW * 0.55) : Radius.circular(barW * 0.18);
+      final rrect = RRect.fromRectAndRadius(barRect, radius);
+      final color = colorAt(settings, t, rainbow: rainbow, salt: i);
+
+      if (neon && settings.glowIntensity > 0.02) {
+        glowPaint
+          ..color = color.withValues(alpha: settings.waveOpacity * glowAlpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, glowBlur);
+        canvas.drawRRect(rrect, glowPaint);
+      }
+
+      fillPaint
+        ..color = color
+        ..maskFilter = null;
+      canvas.drawRRect(rrect, fillPaint);
+
+      if (mirrored && style != PremiumSpectrumStyle.thin) {
+        final core = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.7
+          ..color = const Color(0xFFFFFFFF).withValues(
+            alpha: (settings.waveOpacity * 0.16).clamp(0.0, 1.0).toDouble(),
+          );
+        canvas.drawLine(
+          Offset(x + barW / 2, baseline - h * 0.82),
+          Offset(x + barW / 2, baseline + h * 0.82),
+          core,
+        );
+      }
+    }
+
+    final centerLine = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = colorAt(settings, 0.5, alphaMultiplier: 0.25, rainbow: rainbow);
+    canvas.drawLine(
+      Offset(size.width * 0.03, baseline),
+      Offset(size.width * 0.97, baseline),
+      centerLine,
+    );
+  }
+
+  List<double> _smoothValues(List<double> input, double smoothing) {
+    if (input.length < 3) return input;
+    final radius = (smoothing.clamp(0.0, 1.0) * 4).round();
+    if (radius <= 0) return input;
+    final output = List<double>.filled(input.length, 0.0);
+    for (var i = 0; i < input.length; i++) {
+      var sum = 0.0;
+      var weight = 0.0;
+      for (var j = i - radius; j <= i + radius; j++) {
+        if (j < 0 || j >= input.length) continue;
+        final w = (radius + 1 - (i - j).abs()).toDouble();
+        sum += input[j] * w;
+        weight += w;
+      }
+      output[i] = weight == 0 ? input[i] : sum / weight;
+    }
+    return output;
   }
 }
 

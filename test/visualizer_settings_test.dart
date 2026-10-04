@@ -24,6 +24,8 @@ void main() {
         opacity: 0.77,
         glowIntensity: 0.5,
         sensitivity: 1.4,
+        barCount: 72,
+        smoothing: 0.62,
         barWidth: 9.5,
         alignment: VisualizerAlignment.right,
         aspectRatio: ExportAspectRatio.ratio9x16,
@@ -50,6 +52,8 @@ void main() {
       expect(restored.waveOpacity, original.waveOpacity);
       expect(restored.glowIntensity, original.glowIntensity);
       expect(restored.sensitivity, original.sensitivity);
+      expect(restored.barCount, original.barCount);
+      expect(restored.smoothing, original.smoothing);
       expect(restored.barWidth, original.barWidth);
       expect(restored.alignment, original.alignment);
       expect(restored.aspectRatio, original.aspectRatio);
@@ -62,7 +66,7 @@ void main() {
         'aspectRatio': 'nope',
       });
 
-      expect(restored.template, VisualizerTemplateType.equalizerBars);
+      expect(restored.template, VisualizerTemplateType.spectrumBars);
       expect(restored.colorMode, VisualizerColorMode.gradient);
       expect(restored.backgroundOpacity, 0.0);
       expect(restored.alignment, VisualizerAlignment.center);
@@ -93,7 +97,7 @@ void main() {
       expect(reset.template, VisualizerTemplateType.pulseCircle);
       expect(reset.aspectRatio, ExportAspectRatio.ratio1x1);
       expect(reset.opacity, 1.0);
-      expect(reset.barWidth, 6.0);
+      expect(reset.barWidth, 4.0);
     });
   });
 
