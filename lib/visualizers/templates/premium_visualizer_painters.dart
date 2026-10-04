@@ -400,7 +400,6 @@ class PremiumSpectrumPainter extends VisualizerPainterDelegate
     );
     if (values.isEmpty) return;
 
-    final rect = Offset.zero & size;
     final bass = bandAverage(data.bands, 0, (data.bands.length / 4).ceil());
     final mids = bandAverage(
       data.bands,
