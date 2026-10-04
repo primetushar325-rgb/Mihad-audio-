@@ -68,19 +68,19 @@ jobs:
           exit "$status"
 
       - name: Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
       - name: Store release APK in branch or GitHub release
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          apk="build/app/outputs/flutter-apk/app-release.apk"
+          apk="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
           size=$(stat -c%s "$apk")
           echo "::notice title=Release APK built::${apk} (${size} bytes)"
           if [ "$size" -lt 95000000 ]; then
             mkdir -p release
-            cp "$apk" release/mihad_audio_release.apk
+            cp "$apk" release/mihad_audio_arm64_v8a_release.apk
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add -f release/mihad_audio_release.apk
@@ -88,7 +88,7 @@ jobs:
             git push origin HEAD:arena/01a107d9-mihad-audio
           else
             tag="arena-apk-${GITHUB_RUN_ID}"
-            gh release create "$tag" "$apk#app-release.apk" \
+            gh release create "$tag" "$apk#mihad_audio_arm64_v8a_release.apk" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "MIHAD AUDIO release APK ${GITHUB_RUN_ID}" \
@@ -100,6 +100,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mihad-audio-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           if-no-files-found: error
           retention-days: 30
