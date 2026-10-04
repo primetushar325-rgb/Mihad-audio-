@@ -8,6 +8,8 @@ import 'package:video_player/video_player.dart';
 import '../models/audio_analysis_data.dart';
 import '../models/audio_source.dart';
 import '../models/project.dart';
+import '../models/subtitle_catalog.dart';
+import '../models/subtitle_models.dart';
 import '../models/visualizer_settings.dart';
 import '../services/audio_analysis_service.dart';
 import '../services/media_probe_service.dart';
@@ -50,6 +52,20 @@ class EditorProvider extends ChangeNotifier {
   double get analysisProgress => _analysisProgress;
   double get videoAspectRatio => _videoAspectRatio;
   bool get isUsingSeparateAudio => _separateAudioPlayer != null;
+
+  List<SubtitleLayer> get subtitleLayers => _project?.subtitleLayers ?? const [];
+  String? get selectedSubtitleId => _project?.selectedSubtitleId;
+
+  SubtitleCue? get selectedSubtitle {
+    final id = selectedSubtitleId;
+    if (id == null) return null;
+    for (final layer in subtitleLayers) {
+      for (final cue in layer.cues) {
+        if (cue.id == id) return cue;
+      }
+    }
+    return null;
+  }
 
   /// Opens [project] for editing. If its source video path is missing or
   /// no longer accessible, [state] becomes [EditorLoadState.error] and the
@@ -198,6 +214,243 @@ class EditorProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  Future<void> selectSubtitle(String? id) async {
+    final project = _project;
+    if (project == null) return;
+    project.selectedSubtitleId = id;
+    notifyListeners();
+    await _library.upsert(project);
+  }
+
+  Future<SubtitleCue> addManualSubtitle({String? text}) async {
+    final project = _project;
+    if (project == null) {
+      throw StateError('No project is open.');
+    }
+    final layer = _ensureSubtitleLayer(project);
+    final position = _videoController?.value.position ?? Duration.zero;
+    final startMs = position.inMilliseconds.toDouble();
+    final endMs = startMs + 2600;
+    final cueText = text ?? 'এই গল্পটা শুরু হয়েছিল মধ্যরাতে...';
+    final cue = SubtitleCue(
+      id: _newId('subtitle'),
+      layerId: layer.id,
+      text: cueText,
+      startMs: startMs,
+      endMs: endMs,
+      words: _generateWordTimings(cueText, startMs, endMs),
+      style: const SubtitleTextStyleConfig(),
+    );
+    _replaceLayer(
+      project,
+      layer.copyWith(cues: [...layer.cues, cue]),
+    );
+    project.selectedSubtitleId = cue.id;
+    notifyListeners();
+    await _library.upsert(project);
+    return cue;
+  }
+
+  /// Free/offline auto-caption hook. No paid API key is required or used.
+  /// The current Android build does not bundle a local speech-recognition
+  /// model yet, so the editor falls back cleanly to manual captions while
+  /// keeping a replaceable architecture for future on-device engines.
+  Future<String> requestAutoSubtitleFallback() async {
+    await addManualSubtitle(text: 'Automatic transcription is not available on this device. Edit this subtitle manually.');
+    return 'Automatic transcription is not available on this device. You can enter subtitles manually.';
+  }
+
+  Future<void> updateSubtitleCue(
+    String cueId,
+    SubtitleCue Function(SubtitleCue cue) updater,
+  ) async {
+    final project = _project;
+    if (project == null) return;
+    final updatedLayers = project.subtitleLayers.map((layer) {
+      final cues = layer.cues.map((cue) {
+        if (cue.id != cueId || layer.locked || cue.locked) return cue;
+        final next = updater(cue);
+        return next.copyWith(
+          words: next.words.isEmpty || next.text != cue.text || next.startMs != cue.startMs || next.endMs != cue.endMs
+              ? _generateWordTimings(next.text, next.startMs, next.endMs)
+              : next.words,
+        );
+      }).toList();
+      return layer.copyWith(cues: cues);
+    }).toList();
+    project.subtitleLayers = updatedLayers;
+    notifyListeners();
+    await _library.upsert(project);
+  }
+
+  Future<void> applySubtitleTemplate(String cueId, String templateId) async {
+    final template = subtitleTemplateById(templateId);
+    await updateSubtitleCue(
+      cueId,
+      (cue) => cue.copyWith(style: template.style),
+    );
+  }
+
+  Future<void> duplicateSubtitle(String cueId) async {
+    final project = _project;
+    if (project == null) return;
+    for (final layer in project.subtitleLayers) {
+      final index = layer.cues.indexWhere((cue) => cue.id == cueId);
+      if (index == -1 || layer.locked) continue;
+      final source = layer.cues[index];
+      final copy = source.copyWith(
+        id: _newId('subtitle'),
+        startMs: source.endMs,
+        endMs: source.endMs + source.durationMs,
+      );
+      final cues = [...layer.cues]..insert(index + 1, copy);
+      _replaceLayer(project, layer.copyWith(cues: cues));
+      project.selectedSubtitleId = copy.id;
+      notifyListeners();
+      await _library.upsert(project);
+      return;
+    }
+  }
+
+  Future<void> deleteSubtitle(String cueId) async {
+    final project = _project;
+    if (project == null) return;
+    project.subtitleLayers = project.subtitleLayers
+        .map((layer) => layer.locked ? layer : layer.copyWith(cues: layer.cues.where((cue) => cue.id != cueId).toList()))
+        .toList();
+    if (project.selectedSubtitleId == cueId) project.selectedSubtitleId = null;
+    notifyListeners();
+    await _library.upsert(project);
+  }
+
+  Future<void> splitSubtitle(String cueId) async {
+    final project = _project;
+    if (project == null) return;
+    for (final layer in project.subtitleLayers) {
+      final index = layer.cues.indexWhere((cue) => cue.id == cueId);
+      if (index == -1 || layer.locked) continue;
+      final cue = layer.cues[index];
+      final midpoint = cue.startMs + cue.durationMs / 2;
+      final words = cue.text.trim().split(RegExp(r'\s+'));
+      final leftText = words.isEmpty ? cue.text : words.take((words.length / 2).ceil()).join(' ');
+      final rightText = words.length < 2 ? cue.text : words.skip((words.length / 2).ceil()).join(' ');
+      final first = cue.copyWith(
+        text: leftText,
+        endMs: midpoint,
+        words: _generateWordTimings(leftText, cue.startMs, midpoint),
+      );
+      final second = cue.copyWith(
+        id: _newId('subtitle'),
+        text: rightText,
+        startMs: midpoint,
+        endMs: cue.endMs,
+        words: _generateWordTimings(rightText, midpoint, cue.endMs),
+      );
+      final cues = [...layer.cues]
+        ..removeAt(index)
+        ..insertAll(index, [first, second]);
+      _replaceLayer(project, layer.copyWith(cues: cues));
+      project.selectedSubtitleId = second.id;
+      notifyListeners();
+      await _library.upsert(project);
+      return;
+    }
+  }
+
+  Future<void> mergeSelectedSubtitleWithNext() async {
+    final project = _project;
+    final id = project?.selectedSubtitleId;
+    if (project == null || id == null) return;
+    for (final layer in project.subtitleLayers) {
+      final ordered = [...layer.cues]..sort((a, b) => a.startMs.compareTo(b.startMs));
+      final index = ordered.indexWhere((cue) => cue.id == id);
+      if (index == -1 || index >= ordered.length - 1 || layer.locked) continue;
+      final a = ordered[index];
+      final b = ordered[index + 1];
+      final mergedText = '${a.text.trim()} ${b.text.trim()}'.trim();
+      final merged = a.copyWith(
+        text: mergedText,
+        endMs: b.endMs,
+        words: _generateWordTimings(mergedText, a.startMs, b.endMs),
+      );
+      final cues = layer.cues.where((cue) => cue.id != a.id && cue.id != b.id).toList()..add(merged);
+      _replaceLayer(project, layer.copyWith(cues: cues));
+      project.selectedSubtitleId = merged.id;
+      notifyListeners();
+      await _library.upsert(project);
+      return;
+    }
+  }
+
+  Future<void> updateSubtitleLayer(
+    String layerId,
+    SubtitleLayer Function(SubtitleLayer layer) updater,
+  ) async {
+    final project = _project;
+    if (project == null) return;
+    project.subtitleLayers = project.subtitleLayers.map((layer) {
+      return layer.id == layerId ? updater(layer) : layer;
+    }).toList();
+    notifyListeners();
+    await _library.upsert(project);
+  }
+
+  Future<void> saveSubtitleStyle(String cueId) async {
+    final project = _project;
+    final cue = selectedSubtitle;
+    if (project == null || cue == null || cue.id != cueId) return;
+    project.savedSubtitleStyles = [...project.savedSubtitleStyles, cue.style];
+    notifyListeners();
+    await _library.upsert(project);
+  }
+
+  Future<void> toggleFavoriteTemplate(String templateId) async {
+    final project = _project;
+    if (project == null) return;
+    final favorites = [...project.favoriteSubtitleTemplateIds];
+    favorites.contains(templateId) ? favorites.remove(templateId) : favorites.add(templateId);
+    project.favoriteSubtitleTemplateIds = favorites;
+    notifyListeners();
+    await _library.upsert(project);
+  }
+
+  SubtitleLayer _ensureSubtitleLayer(Project project) {
+    if (project.subtitleLayers.isNotEmpty) return project.subtitleLayers.first;
+    final layer = SubtitleLayer(id: _newId('layer'), name: 'Subtitles');
+    project.subtitleLayers = [layer];
+    return layer;
+  }
+
+  void _replaceLayer(Project project, SubtitleLayer replacement) {
+    project.subtitleLayers = project.subtitleLayers.map((layer) {
+      return layer.id == replacement.id ? replacement : layer;
+    }).toList();
+    if (!project.subtitleLayers.any((layer) => layer.id == replacement.id)) {
+      project.subtitleLayers = [...project.subtitleLayers, replacement];
+    }
+  }
+
+  List<SubtitleWordTiming> _generateWordTimings(
+    String text,
+    double startMs,
+    double endMs,
+  ) {
+    final words = text.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return const [];
+    final duration = (endMs - startMs).clamp(1.0, double.infinity).toDouble();
+    final slice = duration / words.length;
+    return List<SubtitleWordTiming>.generate(words.length, (index) {
+      final wordStart = startMs + slice * index;
+      return SubtitleWordTiming(
+        word: words[index],
+        startMs: wordStart,
+        endMs: index == words.length - 1 ? endMs : wordStart + slice,
+      );
+    });
+  }
+
+  String _newId(String prefix) => '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
 
   Future<void> updateVisualizerSettings(
     VisualizerSettings Function(VisualizerSettings current) updater,

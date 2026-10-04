@@ -13,6 +13,8 @@ import '../state/editor_provider.dart';
 import '../state/projects_library_provider.dart';
 import '../widgets/color_picker_sheet.dart';
 import '../widgets/pick_feedback.dart';
+import '../widgets/subtitle_editor_panel.dart';
+import '../widgets/subtitle_overlay_editor.dart';
 import '../widgets/visualizer_overlay_editor.dart';
 import 'export_screen.dart';
 import 'template_gallery_screen.dart';
@@ -229,6 +231,16 @@ class _ReadyEditor extends StatelessWidget {
                       onChanged: (updated) =>
                           editor.updateVisualizerSettings((_) => updated),
                     ),
+                    SubtitleOverlayEditor(
+                      controller: controller,
+                      layers: editor.subtitleLayers,
+                      selectedCueId: editor.selectedSubtitleId,
+                      onSelect: editor.selectSubtitle,
+                      onCueChanged: (cue) => editor.updateSubtitleCue(
+                        cue.id,
+                        (_) => cue,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -244,6 +256,8 @@ class _ReadyEditor extends StatelessWidget {
               _TemplateSection(editor: editor),
               const SizedBox(height: 20),
               _AudioSection(editor: editor, picker: picker),
+              const SizedBox(height: 20),
+              SubtitleEditorPanel(editor: editor),
               const SizedBox(height: 20),
               _AppearanceSection(editor: editor),
             ],

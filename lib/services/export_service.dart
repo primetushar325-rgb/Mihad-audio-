@@ -12,7 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/audio_analysis_data.dart';
 import '../models/audio_source.dart';
 import '../models/project.dart';
-import '../models/visualizer_settings.dart';
+import '../subtitles/subtitle_renderer.dart';
 import '../visualizers/visualizer_painter_base.dart';
 import '../visualizers/visualizer_registry.dart';
 import 'export_math.dart';
@@ -99,7 +99,7 @@ class ExportService {
         fps: fps,
         outW: outW,
         outH: outH,
-        settings: project.visualizerSettings,
+        project: project,
         analysisData: analysisData,
         cancelToken: cancelToken,
         onProgress: onProgress,
@@ -151,17 +151,23 @@ class ExportService {
     required double fps,
     required int outW,
     required int outH,
-    required VisualizerSettings settings,
+    required Project project,
     required AudioAnalysisData analysisData,
     required ExportCancelToken cancelToken,
     required void Function(ExportProgressUpdate update) onProgress,
   }) async {
-    final delegate = painterFor(settings.template);
-    final bounds = resolveVisualizerBounds(
-      settings,
-      outW.toDouble(),
-      outH.toDouble(),
+    final settings = project.visualizerSettings;
+    final hasSubtitles = project.subtitleLayers.any(
+      (layer) => layer.visible && layer.cues.any((cue) => cue.visible),
     );
+    final delegate = painterFor(settings.template);
+    final bounds = hasSubtitles
+        ? Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble())
+        : resolveVisualizerBounds(
+            settings,
+            outW.toDouble(),
+            outH.toDouble(),
+          );
     final overlayLeft = bounds.left.round().clamp(0, outW - 1).toInt();
     final overlayTop = bounds.top.round().clamp(0, outH - 1).toInt();
     final overlayWidth = bounds.width
@@ -174,6 +180,15 @@ class ExportService {
         .toInt();
     final overlaySize = ui.Size(overlayWidth.toDouble(), overlayHeight.toDouble());
     final localSettings = settings.copyWith(posX: 0, posY: 0, width: 1, height: 1);
+    final visualizerBounds = resolveVisualizerBounds(
+      settings,
+      outW.toDouble(),
+      outH.toDouble(),
+    );
+    final visualizerSize = ui.Size(
+      visualizerBounds.width.roundToDouble().clamp(1, outW.toDouble()).toDouble(),
+      visualizerBounds.height.roundToDouble().clamp(1, outH.toDouble()).toDouble(),
+    );
     var bytesWritten = 0;
 
     for (var i = 0; i < totalFrames; i++) {
@@ -188,13 +203,32 @@ class ExportService {
 
       final recorder = ui.PictureRecorder();
       final canvas = ui.Canvas(recorder);
-      paintVisualizerOverlayBox(
-        canvas: canvas,
-        size: overlaySize,
-        data: frameData,
-        settings: localSettings,
-        delegate: delegate,
-      );
+      if (hasSubtitles) {
+        canvas.save();
+        canvas.translate(visualizerBounds.left, visualizerBounds.top);
+        paintVisualizerOverlayBox(
+          canvas: canvas,
+          size: visualizerSize,
+          data: frameData,
+          settings: localSettings,
+          delegate: delegate,
+        );
+        canvas.restore();
+        paintSubtitles(
+          canvas: canvas,
+          size: ui.Size(outW.toDouble(), outH.toDouble()),
+          layers: project.subtitleLayers,
+          positionMs: timeMs,
+        );
+      } else {
+        paintVisualizerOverlayBox(
+          canvas: canvas,
+          size: overlaySize,
+          data: frameData,
+          settings: localSettings,
+          delegate: delegate,
+        );
+      }
 
       final picture = recorder.endRecording();
       final image = await picture.toImage(overlayWidth, overlayHeight);

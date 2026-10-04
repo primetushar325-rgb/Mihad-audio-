@@ -1,5 +1,6 @@
 import 'audio_source.dart';
 import 'export_settings.dart';
+import 'subtitle_models.dart';
 import 'visualizer_settings.dart';
 
 /// Persisted metadata for one MIHAD AUDIO project. This is saved as a
@@ -19,6 +20,15 @@ class Project {
   VisualizerSettings visualizerSettings;
   ExportSettings exportSettings;
 
+  /// Editable subtitle/text layers. Empty projects keep this empty until the
+  /// user taps Add Subtitle, preserving all existing video-editor behavior.
+  List<SubtitleLayer> subtitleLayers;
+
+  String? selectedSubtitleId;
+  List<String> favoriteSubtitleTemplateIds;
+  List<String> favoriteFontFamilies;
+  List<SubtitleTextStyleConfig> savedSubtitleStyles;
+
   /// Paths to videos exported from this project, most recent first.
   List<String> exportedVideoPaths;
 
@@ -31,12 +41,21 @@ class Project {
     AudioSourceConfig? audioSource,
     VisualizerSettings? visualizerSettings,
     ExportSettings? exportSettings,
+    List<SubtitleLayer>? subtitleLayers,
+    this.selectedSubtitleId,
+    List<String>? favoriteSubtitleTemplateIds,
+    List<String>? favoriteFontFamilies,
+    List<SubtitleTextStyleConfig>? savedSubtitleStyles,
     List<String>? exportedVideoPaths,
   }) : createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now(),
        audioSource = audioSource ?? AudioSourceConfig(),
        visualizerSettings = visualizerSettings ?? VisualizerSettings(),
        exportSettings = exportSettings ?? ExportSettings(),
+       subtitleLayers = subtitleLayers ?? [],
+       favoriteSubtitleTemplateIds = favoriteSubtitleTemplateIds ?? [],
+       favoriteFontFamilies = favoriteFontFamilies ?? [],
+       savedSubtitleStyles = savedSubtitleStyles ?? [],
        exportedVideoPaths = exportedVideoPaths ?? [];
 
   Map<String, dynamic> toJson() => {
@@ -48,6 +67,11 @@ class Project {
     'audioSource': audioSource.toJson(),
     'visualizerSettings': visualizerSettings.toJson(),
     'exportSettings': exportSettings.toJson(),
+    'subtitleLayers': subtitleLayers.map((layer) => layer.toJson()).toList(),
+    'selectedSubtitleId': selectedSubtitleId,
+    'favoriteSubtitleTemplateIds': favoriteSubtitleTemplateIds,
+    'favoriteFontFamilies': favoriteFontFamilies,
+    'savedSubtitleStyles': savedSubtitleStyles.map((style) => style.toJson()).toList(),
     'exportedVideoPaths': exportedVideoPaths,
   };
 
@@ -77,6 +101,35 @@ class Project {
               Map<String, dynamic>.from(json['exportSettings'] as Map),
             )
           : ExportSettings(),
+      subtitleLayers:
+          (json['subtitleLayers'] as List?)
+              ?.map(
+                (e) => SubtitleLayer.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
+              .toList() ??
+          [],
+      selectedSubtitleId: json['selectedSubtitleId'] as String?,
+      favoriteSubtitleTemplateIds:
+          (json['favoriteSubtitleTemplateIds'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      favoriteFontFamilies:
+          (json['favoriteFontFamilies'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      savedSubtitleStyles:
+          (json['savedSubtitleStyles'] as List?)
+              ?.map(
+                (e) => SubtitleTextStyleConfig.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
+              .toList() ??
+          [],
       exportedVideoPaths:
           (json['exportedVideoPaths'] as List?)
               ?.map((e) => e.toString())
