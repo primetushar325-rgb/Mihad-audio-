@@ -13,6 +13,14 @@ void main() {
         height: 0.22,
         primaryColorValue: 0xFF112233,
         secondaryColorValue: 0xFF445566,
+        colorMode: VisualizerColorMode.random,
+        backgroundColorValue: 0xFF010203,
+        backgroundOpacity: 0.66,
+        cornerRadius: 0.42,
+        borderEnabled: true,
+        borderColorValue: 0xFF778899,
+        borderOpacity: 0.44,
+        borderWidth: 3.5,
         opacity: 0.77,
         glowIntensity: 0.5,
         sensitivity: 1.4,
@@ -30,7 +38,16 @@ void main() {
       expect(restored.height, original.height);
       expect(restored.primaryColorValue, original.primaryColorValue);
       expect(restored.secondaryColorValue, original.secondaryColorValue);
+      expect(restored.colorMode, original.colorMode);
+      expect(restored.backgroundColorValue, original.backgroundColorValue);
+      expect(restored.backgroundOpacity, original.backgroundOpacity);
+      expect(restored.cornerRadius, original.cornerRadius);
+      expect(restored.borderEnabled, original.borderEnabled);
+      expect(restored.borderColorValue, original.borderColorValue);
+      expect(restored.borderOpacity, original.borderOpacity);
+      expect(restored.borderWidth, original.borderWidth);
       expect(restored.opacity, original.opacity);
+      expect(restored.waveOpacity, original.waveOpacity);
       expect(restored.glowIntensity, original.glowIntensity);
       expect(restored.sensitivity, original.sensitivity);
       expect(restored.barWidth, original.barWidth);
@@ -46,6 +63,8 @@ void main() {
       });
 
       expect(restored.template, VisualizerTemplateType.equalizerBars);
+      expect(restored.colorMode, VisualizerColorMode.gradient);
+      expect(restored.backgroundOpacity, 0.0);
       expect(restored.alignment, VisualizerAlignment.center);
       expect(restored.aspectRatio, ExportAspectRatio.ratio16x9);
     });

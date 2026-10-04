@@ -30,9 +30,8 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Browse Template Gallery'));
-      // Template tiles run a continuously-repeating demo animation, so
-      // pumpAndSettle would never settle here - pump fixed frames for the
-      // page transition instead.
+      // Pump fixed frames for the gallery route transition instead of
+      // relying on pumpAndSettle in this navigation test.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pump(const Duration(milliseconds: 350));

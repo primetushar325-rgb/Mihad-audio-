@@ -4,10 +4,9 @@ import '../models/visualizer_settings.dart';
 import 'visualizer_painter_base.dart';
 import 'visualizer_registry.dart';
 
-/// Generic [CustomPainter] used both by the live preview widget and (via
-/// the same code path, guaranteeing WYSIWYG) a one-off still frame
-/// renderer used during export. It simply delegates to the template
-/// registered for [settings.template].
+/// Generic [CustomPainter] used by live preview and template thumbnails.
+/// The same `paintVisualizerOverlayBox` helper is also called by export,
+/// preserving WYSIWYG rounded-box/background/border rendering.
 class VisualizerCanvasPainter extends CustomPainter {
   final VisualizerFrameData data;
   final VisualizerSettings settings;
@@ -20,11 +19,14 @@ class VisualizerCanvasPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (settings.opacity <= 0.0) return;
     final delegate = painterFor(settings.template);
-    canvas.saveLayer(Offset.zero & size, Paint());
-    delegate.paint(canvas, size, data, settings);
-    canvas.restore();
+    paintVisualizerOverlayBox(
+      canvas: canvas,
+      size: size,
+      data: data,
+      settings: settings,
+      delegate: delegate,
+    );
   }
 
   @override

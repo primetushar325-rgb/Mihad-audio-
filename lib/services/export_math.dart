@@ -64,10 +64,21 @@ resolveVisualizerBounds(
   double canvasWidth,
   double canvasHeight,
 ) {
-  return (
-    left: settings.posX * canvasWidth,
-    top: settings.posY * canvasHeight,
-    width: settings.width * canvasWidth,
-    height: settings.height * canvasHeight,
-  );
+  final safeCanvasWidth = canvasWidth <= 0 ? 1.0 : canvasWidth;
+  final safeCanvasHeight = canvasHeight <= 0 ? 1.0 : canvasHeight;
+  final widthFraction = settings.width.clamp(0.02, 1.0).toDouble();
+  final heightFraction = settings.height.clamp(0.02, 1.0).toDouble();
+  final width = (widthFraction * safeCanvasWidth)
+      .clamp(1.0, safeCanvasWidth)
+      .toDouble();
+  final height = (heightFraction * safeCanvasHeight)
+      .clamp(1.0, safeCanvasHeight)
+      .toDouble();
+  final left = (settings.posX * safeCanvasWidth)
+      .clamp(0.0, safeCanvasWidth - width)
+      .toDouble();
+  final top = (settings.posY * safeCanvasHeight)
+      .clamp(0.0, safeCanvasHeight - height)
+      .toDouble();
+  return (left: left, top: top, width: width, height: height);
 }

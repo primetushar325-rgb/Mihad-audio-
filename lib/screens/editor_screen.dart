@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
@@ -348,8 +350,11 @@ class _TemplateSection extends StatelessWidget {
           final selected = await Navigator.of(context)
               .push<VisualizerTemplateType>(
                 MaterialPageRoute(
-                  builder: (_) =>
-                      TemplateGalleryScreen(selected: settings.template),
+                  builder: (_) => TemplateGalleryScreen(
+                    selected: settings.template,
+                    analysisData: editor.analysisData,
+                    controller: editor.videoController,
+                  ),
                 ),
               );
           if (selected != null) {
@@ -462,21 +467,57 @@ class _AppearanceSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = editor.project!.visualizerSettings;
 
+    void update(VisualizerSettings Function(VisualizerSettings s) updater) {
+      editor.updateVisualizerSettings(updater);
+    }
+
     Widget slider(
       String label,
       double value,
       double min,
       double max,
-      void Function(double) onChanged,
-    ) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 13)),
-          Slider(value: value, min: min, max: max, onChanged: onChanged),
-        ],
+      void Function(double) onChanged, {
+      String? valueLabel,
+      int? divisions,
+    }) {
+      final effectiveMax = max <= min ? min + 0.0001 : max;
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 13)),
+                Text(
+                  valueLabel ?? value.toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: MihadColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            Slider(
+              value: value.clamp(min, effectiveMax).toDouble(),
+              min: min,
+              max: effectiveMax,
+              divisions: divisions,
+              onChanged: onChanged,
+            ),
+          ],
+        ),
       );
     }
+
+    Widget sectionLabel(String text) => Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+      ),
+    );
 
     return Card(
       child: Padding(
@@ -487,18 +528,57 @@ class _AppearanceSection extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Appearance',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-                TextButton(
-                  onPressed: () => editor.updateVisualizerSettings(
-                    (s) => s.resetAppearance(),
+                const Expanded(
+                  child: Text(
+                    'Visualizer Controls',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                   ),
-                  child: const Text('Reset'),
+                ),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => update((s) => s.resetAppearance()),
+                      icon: const Icon(Icons.restart_alt, size: 17),
+                      label: const Text('Reset'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () {
+                        if (editor.videoController?.value.isPlaying ?? false) {
+                          editor.pause();
+                        } else {
+                          editor.play();
+                        }
+                      },
+                      icon: const Icon(Icons.play_circle_outline, size: 17),
+                      label: const Text('Preview'),
+                    ),
+                  ],
                 ),
               ],
             ),
+            sectionLabel('Color'),
+            SegmentedButton<VisualizerColorMode>(
+              segments: const [
+                ButtonSegment(
+                  value: VisualizerColorMode.single,
+                  label: Text('Single'),
+                ),
+                ButtonSegment(
+                  value: VisualizerColorMode.gradient,
+                  label: Text('Gradient'),
+                ),
+                ButtonSegment(
+                  value: VisualizerColorMode.random,
+                  label: Text('Random'),
+                ),
+              ],
+              selected: {settings.colorMode},
+              onSelectionChanged: (set) => update(
+                (s) => s.copyWith(colorMode: set.first),
+              ),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -511,9 +591,7 @@ class _AppearanceSection extends StatelessWidget {
                         settings.primaryColorValue,
                       );
                       if (color != null) {
-                        editor.updateVisualizerSettings(
-                          (s) => s.copyWith(primaryColorValue: color),
-                        );
+                        update((s) => s.copyWith(primaryColorValue: color));
                       }
                     },
                   ),
@@ -529,54 +607,176 @@ class _AppearanceSection extends StatelessWidget {
                         settings.secondaryColorValue,
                       );
                       if (color != null) {
-                        editor.updateVisualizerSettings(
-                          (s) => s.copyWith(secondaryColorValue: color),
-                        );
+                        update((s) => s.copyWith(secondaryColorValue: color));
                       }
                     },
                   ),
                 ),
               ],
             ),
-            slider(
-              'Opacity',
-              settings.opacity,
-              0.1,
-              1.0,
-              (v) => editor.updateVisualizerSettings(
-                (s) => s.copyWith(opacity: v),
-              ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _singleColorPresets.map((preset) {
+                return ChoiceChip(
+                  label: Text(preset.label),
+                  selected: settings.colorMode == VisualizerColorMode.single &&
+                      settings.primaryColorValue == preset.value,
+                  avatar: CircleAvatar(backgroundColor: Color(preset.value)),
+                  onSelected: (_) => update(
+                    (s) => s.copyWith(
+                      colorMode: VisualizerColorMode.single,
+                      primaryColorValue: preset.value,
+                      secondaryColorValue: preset.value,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ..._gradientPresets.map(
+                  (preset) => _GradientPresetButton(
+                    preset: preset,
+                    selected: settings.colorMode == VisualizerColorMode.gradient &&
+                        settings.primaryColorValue == preset.start &&
+                        settings.secondaryColorValue == preset.end,
+                    onTap: () => update(
+                      (s) => s.copyWith(
+                        colorMode: VisualizerColorMode.gradient,
+                        primaryColorValue: preset.start,
+                        secondaryColorValue: preset.end,
+                      ),
+                    ),
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    final pair = _randomColorPair();
+                    update(
+                      (s) => s.copyWith(
+                        colorMode: VisualizerColorMode.random,
+                        primaryColorValue: pair.$1,
+                        secondaryColorValue: pair.$2,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.casino_outlined, size: 18),
+                  label: const Text('Random Color'),
+                ),
+              ],
+            ),
+            sectionLabel('Background'),
+            _ColorSwatch(
+              label: 'Background color',
+              color: settings.backgroundColor,
+              onTap: () async {
+                final color = await showMihadColorPicker(
+                  context,
+                  settings.backgroundColorValue,
+                );
+                if (color != null) {
+                  update((s) => s.copyWith(backgroundColorValue: color));
+                }
+              },
             ),
             slider(
-              'Glow intensity',
-              settings.glowIntensity,
-              0.0,
-              1.0,
-              (v) => editor.updateVisualizerSettings(
-                (s) => s.copyWith(glowIntensity: v),
+              'Background opacity',
+              settings.backgroundOpacity,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(backgroundOpacity: v)),
+              valueLabel: '${(settings.backgroundOpacity * 100).round()}%',
+              divisions: 100,
+            ),
+            slider(
+              'Corner radius',
+              settings.cornerRadius,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(cornerRadius: v)),
+              valueLabel: '${(settings.cornerRadius * 100).round()}%',
+              divisions: 100,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Border'),
+              subtitle: const Text('Draw a rounded outline around the box'),
+              value: settings.borderEnabled,
+              onChanged: (v) => update((s) => s.copyWith(borderEnabled: v)),
+            ),
+            if (settings.borderEnabled) ...[
+              _ColorSwatch(
+                label: 'Border color',
+                color: settings.borderColor,
+                onTap: () async {
+                  final color = await showMihadColorPicker(
+                    context,
+                    settings.borderColorValue,
+                  );
+                  if (color != null) {
+                    update((s) => s.copyWith(borderColorValue: color));
+                  }
+                },
               ),
+              slider(
+                'Border opacity',
+                settings.borderOpacity,
+                0,
+                1,
+                (v) => update((s) => s.copyWith(borderOpacity: v)),
+                valueLabel: '${(settings.borderOpacity * 100).round()}%',
+                divisions: 100,
+              ),
+              slider(
+                'Border width',
+                settings.borderWidth,
+                0.5,
+                12,
+                (v) => update((s) => s.copyWith(borderWidth: v)),
+                valueLabel: '${settings.borderWidth.toStringAsFixed(1)} px',
+              ),
+            ],
+            sectionLabel('Wave'),
+            slider(
+              'Wave opacity',
+              settings.waveOpacity,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(waveOpacity: v)),
+              valueLabel: '${(settings.waveOpacity * 100).round()}%',
+              divisions: 100,
+            ),
+            slider(
+              'Glow',
+              settings.glowIntensity,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(glowIntensity: v)),
+              valueLabel: '${(settings.glowIntensity * 100).round()}%',
+              divisions: 100,
+            ),
+            slider(
+              'Thickness',
+              settings.barWidth,
+              1,
+              24,
+              (v) => update((s) => s.copyWith(barWidth: v)),
+              valueLabel: settings.barWidth.toStringAsFixed(1),
             ),
             slider(
               'Sensitivity',
               settings.sensitivity,
               0.3,
               2.5,
-              (v) => editor.updateVisualizerSettings(
-                (s) => s.copyWith(sensitivity: v),
-              ),
+              (v) => update((s) => s.copyWith(sensitivity: v)),
+              valueLabel: '${settings.sensitivity.toStringAsFixed(2)}×',
             ),
-            slider(
-              'Bar / line thickness',
-              settings.barWidth,
-              1.0,
-              20.0,
-              (v) => editor.updateVisualizerSettings(
-                (s) => s.copyWith(barWidth: v),
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text('Horizontal alignment', style: TextStyle(fontSize: 13)),
-            const SizedBox(height: 6),
+            sectionLabel('Alignment'),
             SegmentedButton<VisualizerAlignment>(
               segments: const [
                 ButtonSegment(
@@ -600,24 +800,70 @@ class _AppearanceSection extends StatelessWidget {
                   VisualizerAlignment.center => (1 - settings.width) / 2,
                   VisualizerAlignment.right => 0.97 - settings.width,
                 };
-                editor.updateVisualizerSettings(
+                update(
                   (s) => s.copyWith(
                     alignment: alignment,
-                    posX: posX.clamp(0.0, 1.0),
+                    posX: posX.clamp(0.0, 1.0).toDouble(),
                   ),
                 );
               },
             ),
-            const SizedBox(height: 16),
-            const Text('Export aspect ratio', style: TextStyle(fontSize: 13)),
-            const SizedBox(height: 6),
+            sectionLabel('Position'),
+            slider(
+              'Position X',
+              settings.posX.clamp(0.0, 1.0).toDouble(),
+              0,
+              (1 - settings.width).clamp(0.0, 1.0).toDouble(),
+              (v) => update((s) => s.copyWith(posX: v)),
+              valueLabel: '${(settings.posX * 100).round()}%',
+              divisions: 100,
+            ),
+            slider(
+              'Position Y',
+              settings.posY.clamp(0.0, 1.0).toDouble(),
+              0,
+              (1 - settings.height).clamp(0.0, 1.0).toDouble(),
+              (v) => update((s) => s.copyWith(posY: v)),
+              valueLabel: '${(settings.posY * 100).round()}%',
+              divisions: 100,
+            ),
+            sectionLabel('Size'),
+            slider(
+              'Width',
+              settings.width.clamp(0.05, 1.0).toDouble(),
+              0.05,
+              1,
+              (v) => update(
+                (s) => s.copyWith(
+                  width: v,
+                  posX: s.posX.clamp(0.0, 1 - v).toDouble(),
+                ),
+              ),
+              valueLabel: '${(settings.width * 100).round()}%',
+              divisions: 95,
+            ),
+            slider(
+              'Height',
+              settings.height.clamp(0.05, 1.0).toDouble(),
+              0.05,
+              1,
+              (v) => update(
+                (s) => s.copyWith(
+                  height: v,
+                  posY: s.posY.clamp(0.0, 1 - v).toDouble(),
+                ),
+              ),
+              valueLabel: '${(settings.height * 100).round()}%',
+              divisions: 95,
+            ),
+            sectionLabel('Export aspect ratio'),
             Wrap(
               spacing: 8,
               children: ExportAspectRatio.values.map((ratio) {
                 return ChoiceChip(
                   label: Text(ratio.label),
                   selected: settings.aspectRatio == ratio,
-                  onSelected: (_) => editor.updateVisualizerSettings(
+                  onSelected: (_) => update(
                     (s) => s.copyWith(aspectRatio: ratio),
                   ),
                 );
@@ -646,23 +892,164 @@ class _ColorSwatch extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           color: MihadColors.surfaceElevated,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         ),
         child: Row(
           children: [
             Container(
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+              ),
             ),
             const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 12.5)),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+class _NamedColorPreset {
+  final String label;
+  final int value;
+  const _NamedColorPreset(this.label, this.value);
+}
+
+class _GradientPreset {
+  final String label;
+  final int start;
+  final int end;
+  const _GradientPreset(this.label, this.start, this.end);
+}
+
+const _singleColorPresets = [
+  _NamedColorPreset('White', 0xFFFFFFFF),
+  _NamedColorPreset('Black', 0xFF000000),
+  _NamedColorPreset('Red', 0xFFFF3B30),
+  _NamedColorPreset('Orange', 0xFFFF9500),
+  _NamedColorPreset('Yellow', 0xFFFFCC00),
+  _NamedColorPreset('Green', 0xFF34C759),
+  _NamedColorPreset('Cyan', 0xFF00E5FF),
+  _NamedColorPreset('Blue', 0xFF0A84FF),
+  _NamedColorPreset('Purple', 0xFFBF5AF2),
+  _NamedColorPreset('Pink', 0xFFFF2D55),
+];
+
+const _gradientPresets = [
+  _GradientPreset('Pink-Purple', 0xFFFF2D55, 0xFFBF5AF2),
+  _GradientPreset('Blue-Cyan', 0xFF0A84FF, 0xFF00E5FF),
+  _GradientPreset('Red-Orange', 0xFFFF3B30, 0xFFFF9500),
+  _GradientPreset('Yellow-Green', 0xFFFFCC00, 0xFF34C759),
+  _GradientPreset('Rainbow', 0xFFFF2D55, 0xFF0A84FF),
+];
+
+class _GradientPresetButton extends StatelessWidget {
+  final _GradientPreset preset;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _GradientPresetButton({
+    required this.preset,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? MihadColors.accentPrimary : Colors.white24,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 16,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                gradient: LinearGradient(
+                  colors: [Color(preset.start), Color(preset.end)],
+                ),
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(preset.label, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+(int, int) _randomColorPair() {
+  final random = math.Random();
+  int vivid() {
+    final hue = random.nextDouble() * 360;
+    final sat = 0.68 + random.nextDouble() * 0.25;
+    final val = 0.82 + random.nextDouble() * 0.16;
+    return _hsvColor(hue, sat, val);
+  }
+
+  final first = vivid();
+  var second = vivid();
+  var guard = 0;
+  while ((first - second).abs() < 0x00202020 && guard < 8) {
+    second = vivid();
+    guard++;
+  }
+  return (first, second);
+}
+
+int _hsvColor(double hue, double saturation, double value) {
+  final h = ((hue % 360) + 360) % 360;
+  final c = value * saturation;
+  final x = c * (1 - ((h / 60) % 2 - 1).abs());
+  final m = value - c;
+  double r = 0, g = 0, b = 0;
+  if (h < 60) {
+    r = c;
+    g = x;
+  } else if (h < 120) {
+    r = x;
+    g = c;
+  } else if (h < 180) {
+    g = c;
+    b = x;
+  } else if (h < 240) {
+    g = x;
+    b = c;
+  } else if (h < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  final red = ((r + m) * 255).round().clamp(0, 255).toInt();
+  final green = ((g + m) * 255).round().clamp(0, 255).toInt();
+  final blue = ((b + m) * 255).round().clamp(0, 255).toInt();
+  return (0xFF << 24) | (red << 16) | (green << 8) | blue;
 }

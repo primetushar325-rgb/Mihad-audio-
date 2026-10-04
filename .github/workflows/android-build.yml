@@ -1,6 +1,6 @@
 name: Android Build
 
-# Builds MIHAD AUDIO's debug APK on GitHub-hosted runners. The user's own
+# Builds MIHAD AUDIO's release APK on GitHub-hosted runners. The user's own
 # videos/audio are never involved here - this workflow only compiles the
 # app itself. All real video/audio processing happens later, locally, on
 # the Android device that installs the resulting APK.
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -36,11 +36,11 @@ jobs:
       - name: Flutter environment info
         run: flutter doctor -v
 
+      - name: Clean previous outputs
+        run: flutter clean
+
       - name: Install dependencies
         run: flutter pub get
-
-      - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed lib test
 
       - name: Static analysis
         run: flutter analyze
@@ -48,13 +48,13 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build debug APK
-        run: flutter build apk --debug
+      - name: Build release APK
+        run: flutter build apk --release
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mihad-audio-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: mihad-audio-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30

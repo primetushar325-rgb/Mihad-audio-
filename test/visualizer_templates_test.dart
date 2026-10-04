@@ -9,13 +9,20 @@ import 'package:mihad_audio/visualizers/visualizer_registry.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('exactly the 10 specified templates are registered', () {
-    expect(kVisualizerTemplates.length, 10);
-    for (final info in kVisualizerTemplates) {
+  test('premium template catalog is fully registered', () {
+    expect(kVisualizerTemplates.length, greaterThanOrEqualTo(30));
+    expect(kVisualizerTemplates.length, lessThanOrEqualTo(50));
+    expect(kVisualizerTemplates.map((e) => e.type).toSet().length, kVisualizerTemplates.length);
+    for (final type in VisualizerTemplateType.values) {
       expect(
-        visualizerRegistry.containsKey(info.type),
+        kVisualizerTemplates.any((info) => info.type == type),
         isTrue,
-        reason: '${info.displayName} has no registered painter',
+        reason: '$type has no gallery metadata',
+      );
+      expect(
+        visualizerRegistry.containsKey(type),
+        isTrue,
+        reason: '$type has no registered painter',
       );
     }
   });
