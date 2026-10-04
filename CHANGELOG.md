@@ -4,6 +4,18 @@ All notable changes to MIHAD AUDIO are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Removed the `video_thumbnail` package: its bundled Android
+  `build.gradle` references the removed `jcenter()` repository shorthand,
+  which fails the actual Gradle "Build debug APK" step under the
+  AGP/Gradle versions bundled with current Flutter stable - confirmed by
+  a real GitHub Actions run where `analyze`/`test` passed but the APK
+  build failed. Replaced with `VideoThumbnailService`, a small local
+  thumbnail extractor built on `ffmpeg_kit_flutter_new` (already shipped
+  for export) with on-disk caching by video path + modified time. This
+  removes an extra native Android plugin entirely and was verified by a
+  real passing GitHub Actions build.
+
 ### Added
 - Real on-device video thumbnails on project cards (`VideoThumbnailImage`,
   via the `video_thumbnail` package), replacing the static gradient-icon

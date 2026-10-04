@@ -1,15 +1,16 @@
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../app/theme.dart';
+import '../services/video_thumbnail_service.dart';
 
 /// Shows a real thumbnail generated locally from the project's source
 /// video (spec section 4: "Show a thumbnail ... of the imported video").
 /// Falls back to a generic icon if thumbnail generation isn't supported
-/// on this platform/build (e.g. running in a test harness) or fails for
-/// any other reason - this is a nice-to-have, never a blocker.
+/// on this platform/build (e.g. running in a test harness), the source
+/// file is missing, or it fails for any other reason - this is a
+/// nice-to-have, never a blocker.
 class VideoThumbnailImage extends StatelessWidget {
   final String videoPath;
   final double size;
@@ -20,19 +21,6 @@ class VideoThumbnailImage extends StatelessWidget {
     this.size = 52,
   });
 
-  Future<Uint8List?> _generate() async {
-    try {
-      return await VideoThumbnail.thumbnailData(
-        video: videoPath,
-        imageFormat: ImageFormat.JPEG,
-        maxWidth: 200,
-        quality: 60,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
@@ -40,30 +28,30 @@ class VideoThumbnailImage extends StatelessWidget {
       child: SizedBox(
         width: size,
         height: size,
-        child: FutureBuilder<Uint8List?>(
-          future: _generate(),
+        child: FutureBuilder<String?>(
+          future: VideoThumbnailService.thumbnailFor(videoPath),
           builder: (context, snapshot) {
-            final bytes = snapshot.data;
-            if (bytes != null) {
-              return Image.memory(
-                bytes,
+            final path = snapshot.data;
+            if (path != null) {
+              return Image.file(
+                File(path),
                 fit: BoxFit.cover,
                 width: size,
                 height: size,
+                errorBuilder: (context, error, stackTrace) => _fallback(),
               );
             }
-            return Container(
-              decoration: const BoxDecoration(
-                gradient: MihadColors.brandGradient,
-              ),
-              child: const Icon(
-                Icons.movie_creation_outlined,
-                color: Colors.black,
-              ),
-            );
+            return _fallback();
           },
         ),
       ),
+    );
+  }
+
+  Widget _fallback() {
+    return Container(
+      decoration: const BoxDecoration(gradient: MihadColors.brandGradient),
+      child: const Icon(Icons.movie_creation_outlined, color: Colors.black),
     );
   }
 }
