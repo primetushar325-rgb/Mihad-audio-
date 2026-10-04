@@ -177,14 +177,19 @@ mixin VisualizerPaintHelpers {
     int salt = 0,
   }) {
     if (rainbow) {
-      return Gradient.linear(rect.centerLeft, rect.centerRight, [
-        colorAt(settings, 0.00, rainbow: true, salt: salt),
-        colorAt(settings, 0.18, rainbow: true, salt: salt),
-        colorAt(settings, 0.36, rainbow: true, salt: salt),
-        colorAt(settings, 0.54, rainbow: true, salt: salt),
-        colorAt(settings, 0.72, rainbow: true, salt: salt),
-        colorAt(settings, 1.00, rainbow: true, salt: salt),
-      ]);
+      return Gradient.linear(
+        rect.centerLeft,
+        rect.centerRight,
+        [
+          colorAt(settings, 0.00, rainbow: true, salt: salt),
+          colorAt(settings, 0.18, rainbow: true, salt: salt),
+          colorAt(settings, 0.36, rainbow: true, salt: salt),
+          colorAt(settings, 0.54, rainbow: true, salt: salt),
+          colorAt(settings, 0.72, rainbow: true, salt: salt),
+          colorAt(settings, 1.00, rainbow: true, salt: salt),
+        ],
+        [0.0, 0.18, 0.36, 0.54, 0.72, 1.0],
+      );
     }
     switch (settings.colorMode) {
       case VisualizerColorMode.single:
@@ -194,11 +199,16 @@ mixin VisualizerPaintHelpers {
         ]);
       case VisualizerColorMode.gradient:
       case VisualizerColorMode.random:
-        return Gradient.linear(rect.centerLeft, rect.centerRight, [
-          colorAt(settings, 0, salt: salt),
-          colorAt(settings, 0.5, salt: salt),
-          colorAt(settings, 1, salt: salt),
-        ]);
+        return Gradient.linear(
+          rect.centerLeft,
+          rect.centerRight,
+          [
+            colorAt(settings, 0, salt: salt),
+            colorAt(settings, 0.5, salt: salt),
+            colorAt(settings, 1, salt: salt),
+          ],
+          [0.0, 0.5, 1.0],
+        );
     }
   }
 
