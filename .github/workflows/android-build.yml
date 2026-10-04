@@ -83,7 +83,7 @@ jobs:
             cp "$apk" release/mihad_audio_arm64_v8a_release.apk
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add -f release/mihad_audio_release.apk
+            git add -f release/mihad_audio_arm64_v8a_release.apk
             git commit -m "add release apk artifact [skip ci]"
             git push origin HEAD:arena/01a107d9-mihad-audio
           else
