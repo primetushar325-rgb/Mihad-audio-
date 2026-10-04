@@ -13,6 +13,7 @@ import '../models/subtitle_models.dart';
 import '../models/visualizer_settings.dart';
 import '../services/audio_analysis_service.dart';
 import '../services/media_probe_service.dart';
+import '../services/subtitle_io_service.dart';
 import 'projects_library_provider.dart';
 
 enum EditorLoadState { idle, loadingVideo, analyzingAudio, ready, error }
@@ -259,6 +260,27 @@ class EditorProvider extends ChangeNotifier {
   Future<String> requestAutoSubtitleFallback() async {
     await addManualSubtitle(text: 'Automatic transcription is not available on this device. Edit this subtitle manually.');
     return 'Automatic transcription is not available on this device. You can enter subtitles manually.';
+  }
+
+  Future<int> importSubtitlesFromText({
+    required String text,
+    required String format,
+  }) async {
+    final project = _project;
+    if (project == null || text.trim().isEmpty) return 0;
+    final layer = _ensureSubtitleLayer(project);
+    final io = SubtitleIoService();
+    final imported = switch (format.toLowerCase()) {
+      'vtt' => io.parseVtt(text, layerId: layer.id),
+      'txt' => io.parseTxt(text, layerId: layer.id),
+      _ => io.parseSrt(text, layerId: layer.id),
+    };
+    if (imported.isEmpty) return 0;
+    _replaceLayer(project, layer.copyWith(cues: [...layer.cues, ...imported]));
+    project.selectedSubtitleId = imported.first.id;
+    notifyListeners();
+    await _library.upsert(project);
+    return imported.length;
   }
 
   Future<void> updateSubtitleCue(

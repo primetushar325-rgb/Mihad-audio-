@@ -214,6 +214,7 @@ class _SelectedSubtitleEditor extends StatelessWidget {
               OutlinedButton.icon(onPressed: editor.mergeSelectedSubtitleWithNext, icon: const Icon(Icons.merge_type, size: 16), label: const Text('Merge next')),
               OutlinedButton.icon(onPressed: () => editor.deleteSubtitle(cue.id), icon: const Icon(Icons.delete_outline, size: 16), label: const Text('Delete')),
               OutlinedButton.icon(onPressed: () => editor.saveSubtitleStyle(cue.id), icon: const Icon(Icons.save_alt, size: 16), label: const Text('Save Style')),
+              OutlinedButton.icon(onPressed: () => _showImportText(context), icon: const Icon(Icons.file_upload_outlined, size: 16), label: const Text('Import')),
               OutlinedButton.icon(onPressed: () => _showExportText(context), icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('SRT/VTT')),
             ],
           ),
@@ -243,6 +244,61 @@ class _SelectedSubtitleEditor extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showImportText(BuildContext context) async {
+    final controller = TextEditingController();
+    var format = 'srt';
+    final imported = await showDialog<int>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Import subtitles'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: format,
+                  decoration: const InputDecoration(labelText: 'Format'),
+                  items: const [
+                    DropdownMenuItem(value: 'srt', child: Text('SRT')),
+                    DropdownMenuItem(value: 'vtt', child: Text('VTT')),
+                    DropdownMenuItem(value: 'txt', child: Text('TXT lines')),
+                  ],
+                  onChanged: (value) => setState(() => format = value ?? 'srt'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: controller,
+                  maxLines: 10,
+                  decoration: const InputDecoration(
+                    labelText: 'Paste subtitle text',
+                    hintText: '00:00:01,000 --> 00:00:03,000\nএই গল্পটা শুরু হয়েছিল মধ্যরাতে...',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () async {
+                final count = await editor.importSubtitlesFromText(text: controller.text, format: format);
+                if (context.mounted) Navigator.pop(context, count);
+              },
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (context.mounted && imported != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(imported == 0 ? 'No valid subtitle cues found.' : 'Imported $imported subtitle cues.')),
+      );
+    }
   }
 
   void _showExportText(BuildContext context) {
