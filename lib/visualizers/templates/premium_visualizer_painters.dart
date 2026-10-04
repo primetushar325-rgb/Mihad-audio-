@@ -453,7 +453,6 @@ class PremiumBarsPainter extends VisualizerPainterDelegate
     final values = resample(data.bands, barCount.clamp(12, 42).toInt());
     final spacing = size.height / values.length;
     final rowH = math.max(2.0, spacing * widthFactor).toDouble();
-    final rect = Offset.zero & size;
     final paint = Paint()..style = PaintingStyle.fill;
     for (var i = 0; i < values.length; i++) {
       final t = i / (values.length - 1);
