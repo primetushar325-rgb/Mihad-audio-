@@ -147,7 +147,7 @@ class _SubtitleTimeline extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: cues.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final cue = cues[index];
           final selected = cue.id == editor.selectedSubtitleId;

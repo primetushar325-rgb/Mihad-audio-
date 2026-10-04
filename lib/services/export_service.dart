@@ -162,7 +162,7 @@ class ExportService {
     );
     final delegate = painterFor(settings.template);
     final bounds = hasSubtitles
-        ? Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble())
+        ? ui.Rect.fromLTWH(0, 0, outW.toDouble(), outH.toDouble())
         : resolveVisualizerBounds(
             settings,
             outW.toDouble(),
