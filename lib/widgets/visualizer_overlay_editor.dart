@@ -37,11 +37,15 @@ class VisualizerOverlayEditor extends StatefulWidget {
       _VisualizerOverlayEditorState();
 }
 
+class _VisualizerRepaintSignal extends ChangeNotifier {
+  void request() => notifyListeners();
+}
+
 class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
     with SingleTickerProviderStateMixin {
   late VisualizerSettings _draftSettings;
   late final Ticker _ticker;
-  final _repaint = ChangeNotifier();
+  final _repaint = _VisualizerRepaintSignal();
   final _qualityLevel = ValueNotifier<int>(0);
   bool _interacting = false;
   double _lastCanvasWidth = 360;
@@ -66,14 +70,14 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
       oldWidget.controller.removeListener(_handleControllerEvent);
       widget.controller.addListener(_handleControllerEvent);
       _lastPaintedPosition = widget.controller.value.position;
-      _repaint.notifyListeners();
+      _repaint.request();
     }
     if (!_interacting && !identical(oldWidget.settings, widget.settings)) {
       _draftSettings = widget.settings;
-      _repaint.notifyListeners();
+      _repaint.request();
     }
     if (!identical(oldWidget.analysisData, widget.analysisData)) {
-      _repaint.notifyListeners();
+      _repaint.request();
     }
   }
 
@@ -98,7 +102,7 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
     final value = widget.controller.value;
     if (!value.isPlaying && value.position != _lastPaintedPosition) {
       _lastPaintedPosition = value.position;
-      _repaint.notifyListeners();
+      _repaint.request();
     }
   }
 
@@ -114,7 +118,7 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
     if (micros - _lastNotifyMicros < target) return;
     _lastNotifyMicros = micros;
     _lastPaintedPosition = value.position;
-    _repaint.notifyListeners();
+    _repaint.request();
   }
 
   void _updateAdaptiveQuality(int tickDeltaMicros, int targetMicros) {
@@ -124,7 +128,7 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
       if (_slowFrameStreak >= 6 && _qualityLevel.value < 2) {
         _qualityLevel.value++;
         _slowFrameStreak = 0;
-        _repaint.notifyListeners();
+        _repaint.request();
       }
     } else if (tickDeltaMicros < targetMicros * 1.25) {
       _stableFrameStreak++;
@@ -132,7 +136,7 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor>
       if (_stableFrameStreak >= 180 && _qualityLevel.value > 0) {
         _qualityLevel.value--;
         _stableFrameStreak = 0;
-        _repaint.notifyListeners();
+        _repaint.request();
       }
     }
   }

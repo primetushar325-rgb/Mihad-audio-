@@ -769,7 +769,7 @@ class _AppearanceSection extends StatelessWidget {
             ],
             sectionLabel('Equalizer / Wave'),
             DropdownButtonFormField<VisualizerEffect>(
-              value: settings.visualizerEffect,
+              initialValue: settings.visualizerEffect,
               decoration: const InputDecoration(
                 labelText: 'Type',
                 helperText: 'Different canvas algorithms: classic, soft, peak hold, stepped, fade, cinematic.',
