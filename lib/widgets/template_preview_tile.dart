@@ -60,23 +60,33 @@ class _TemplatePreviewTileState extends State<TemplatePreviewTile>
 
   VisualizerFrameData _syntheticFrame(double t) {
     const bandCount = 32;
+    const waveCount = 96;
     final bands = List<double>.generate(bandCount, (i) {
       final phase = t * 2 * math.pi + i * 0.4;
       return (0.5 + 0.5 * math.sin(phase)) * (0.4 + 0.6 * (1 - i / bandCount));
     });
+    final waveform = List<double>.generate(waveCount, (i) {
+      final x = i / (waveCount - 1);
+      final voiceShape = (math.sin(x * math.pi * 10 + t * math.pi * 2).abs() * 0.55) +
+          (math.sin(x * math.pi * 3).abs() * 0.35);
+      return voiceShape.clamp(0.0, 1.0).toDouble();
+    });
     final amplitude = 0.5 + 0.5 * math.sin(t * 2 * math.pi * 1.3);
-    return VisualizerFrameData(amplitude: amplitude, bands: bands);
+    return VisualizerFrameData(
+      amplitude: amplitude,
+      envelope: amplitude,
+      impact: 0.25,
+      bands: bands,
+      waveformSamples: waveform,
+    );
   }
 
-  VisualizerFrameData _frame() {
+  VisualizerFrameData _frame(VisualizerSettings settings) {
     final analysis = widget.analysisData;
     final controller = widget.controller;
     if (analysis != null && controller != null && !analysis.isEmpty) {
       final posMs = controller.value.position.inMilliseconds.toDouble();
-      return VisualizerFrameData(
-        amplitude: analysis.amplitudeAt(posMs),
-        bands: analysis.bandsAt(posMs),
-      );
+      return visualizerFrameFromAnalysis(analysis, posMs, settings);
     }
     return _syntheticFrame(_demoController.value);
   }
@@ -92,12 +102,19 @@ class _TemplatePreviewTileState extends State<TemplatePreviewTile>
       posY: 0,
       width: 1,
       height: 1,
-      backgroundOpacity: 0.52,
-      cornerRadius: 0.18,
-      glowIntensity: 0.45,
-      barWidth: 4.0,
-      barCount: 64,
-      smoothing: 0.45,
+      backgroundOpacity: 0.24,
+      cornerRadius: 0.14,
+      glowIntensity: 0.38,
+      barWidth: 1.6,
+      barCount: 88,
+      density: VisualizerDensity.high,
+      smoothing: 0.58,
+      waveHeight: 0.82,
+    ).applyTemplatePreset(widget.type).copyWith(
+      posX: 0,
+      posY: 0,
+      width: 1,
+      height: 1,
     );
     final listenable = hasLiveAudio ? widget.controller! : _demoController;
 
@@ -145,7 +162,7 @@ class _TemplatePreviewTileState extends State<TemplatePreviewTile>
                     builder: (context, _) {
                       return CustomPaint(
                         painter: VisualizerCanvasPainter(
-                          data: _frame(),
+                          data: _frame(settings),
                           settings: settings,
                         ),
                         size: Size.infinite,

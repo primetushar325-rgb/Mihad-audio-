@@ -43,7 +43,7 @@ void main() {
 
       // Tapping a template (the first one is always on-screen) pops the
       // gallery and returns the chosen type.
-      await tester.tap(find.text('Classic Waveform'));
+      await tester.tap(find.text('Story Equalizer'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pump(const Duration(milliseconds: 350));

@@ -1,18 +1,50 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import '../models/audio_analysis_data.dart';
 import '../models/visualizer_settings.dart';
 
-/// One audio-analysis snapshot passed to a visualizer painter: overall
-/// amplitude plus per-band frequency energies, both already normalized to
-/// 0.0-1.0 by [AudioAnalysisService].
+/// One audio-analysis snapshot passed to a visualizer painter. Values are
+/// already normalized to 0.0-1.0 by [AudioAnalysisService]/[AudioAnalysisData]
+/// and are always derived from decoded real audio, never from random motion.
 class VisualizerFrameData {
   final double amplitude;
+  final double envelope;
+  final double impact;
   final List<double> bands;
+  final List<double> waveformSamples;
 
-  const VisualizerFrameData({required this.amplitude, required this.bands});
+  const VisualizerFrameData({
+    required this.amplitude,
+    this.envelope = 0,
+    this.impact = 0,
+    required this.bands,
+    this.waveformSamples = const [],
+  });
 
   static const empty = VisualizerFrameData(amplitude: 0, bands: []);
+}
+
+VisualizerFrameData visualizerFrameFromAnalysis(
+  AudioAnalysisData analysis,
+  double positionMs,
+  VisualizerSettings settings,
+) {
+  final amplitude = analysis.amplitudeAt(positionMs);
+  return VisualizerFrameData(
+    amplitude: amplitude,
+    envelope: analysis.envelopeAt(
+      positionMs,
+      attack: settings.attack,
+      release: settings.release,
+    ),
+    impact: analysis.impactAt(
+      positionMs,
+      sensitivity: settings.impactSensitivity,
+    ),
+    bands: analysis.bandsAt(positionMs),
+    waveformSamples: analysis.waveformAt(positionMs),
+  );
 }
 
 /// Base contract every built-in visualizer template implements. Templates
@@ -122,7 +154,11 @@ mixin VisualizerPaintHelpers {
     return output;
   }
 
-  double scaledThickness(VisualizerSettings settings, Size size, [double scale = 1]) {
+  double scaledThickness(
+    VisualizerSettings settings,
+    Size size, [
+    double scale = 1,
+  ]) {
     final referenceScale = math.min(size.width, size.height).toDouble() / 260.0;
     return (settings.barWidth * referenceScale * scale)
         .clamp(0.75, 80.0)

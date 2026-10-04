@@ -19,18 +19,20 @@ class AudioAnalysisException implements Exception {
 }
 
 /// Decodes an audio track to raw PCM using the bundled, offline FFmpeg
-/// binary and runs amplitude + FFT frequency-band analysis entirely on
-/// the device (no network calls, no remote API). This drives every
-/// visualizer template during preview and export.
+/// binary and runs amplitude + time-domain waveform + FFT frequency-band
+/// analysis entirely on the device (no network calls, no remote API). This
+/// is the Flutter/mobile equivalent of using an AudioContext/AnalyserNode
+/// with getByteTimeDomainData() and getByteFrequencyData() in a browser.
 class AudioAnalysisService {
   static const int _sampleRate = 22050;
   static const int _fftWindowSize = 2048;
+  static const int _waveformSampleCount = 96;
   static const double _silenceThreshold = 1e-4;
 
-  /// Decodes [mediaPath]'s audio track and returns per-frame amplitude and
-  /// frequency-band data, where each frame represents [fps] frames per
-  /// second of the eventual video timeline (so lookups are O(1) during
-  /// playback/export).
+  /// Decodes [mediaPath]'s audio track and returns per-frame amplitude,
+  /// waveform, impact and frequency-band data, where each frame represents
+  /// [fps] frames per second of the eventual video timeline (so lookups are
+  /// O(1) during playback/export).
   ///
   /// Throws [AudioAnalysisException] if the file has no usable audio
   /// track or could not be decoded.
@@ -97,7 +99,10 @@ class AudioAnalysisService {
     void Function(double progress)? onProgress,
   }) {
     if (samples.isEmpty) {
-      return AudioAnalysisData.empty(bandCount: bandCount);
+      return AudioAnalysisData.empty(
+        bandCount: bandCount,
+        waveformSampleCount: _waveformSampleCount,
+      );
     }
 
     final frameDurationMs = 1000.0 / fps;
@@ -108,6 +113,10 @@ class AudioAnalysisService {
     final window = _hannWindow(_fftWindowSize);
 
     final rawAmplitude = Float64List(frameCount);
+    final rawWaveform = List<Float64List>.generate(
+      frameCount,
+      (_) => Float64List(_waveformSampleCount),
+    );
     final rawBands = List<Float64List>.generate(
       frameCount,
       (_) => Float64List(bandCount),
@@ -121,6 +130,7 @@ class AudioAnalysisService {
     );
 
     double globalPeakAmp = 0.0;
+    double globalPeakWave = 0.0;
     double globalPeakBand = 0.0;
 
     for (var f = 0; f < frameCount; f++) {
@@ -137,6 +147,17 @@ class AudioAnalysisService {
           : 0.0;
       rawAmplitude[f] = rms;
       if (rms > globalPeakAmp) globalPeakAmp = rms;
+
+      // --- Time-domain waveform/envelope bars centered on this frame. ---
+      _fillWaveformFrame(
+        samples: samples,
+        frameStart: hopStart,
+        frameEnd: hopEnd,
+        output: rawWaveform[f],
+      );
+      for (final v in rawWaveform[f]) {
+        if (v > globalPeakWave) globalPeakWave = v;
+      }
 
       // --- Frequency bands (windowed FFT centered on this hop) ---
       final windowed = Float64List(_fftWindowSize);
@@ -174,6 +195,11 @@ class AudioAnalysisService {
     // Normalize to 0..1 using perceptual (log) compression so quiet
     // passages are still visible and loud passages don't clip harshly.
     final amplitude = List<double>.filled(frameCount, 0.0);
+    final impact = List<double>.filled(frameCount, 0.0);
+    final waveform = List<List<double>>.generate(
+      frameCount,
+      (_) => List<double>.filled(_waveformSampleCount, 0.0),
+    );
     final bands = List<List<double>>.generate(
       frameCount,
       (_) => List<double>.filled(bandCount, 0.0),
@@ -181,32 +207,60 @@ class AudioAnalysisService {
 
     if (!isSilent) {
       const floorDb = -55.0;
-      final peakAmpDb = _toDb(globalPeakAmp);
-      final peakBandDb = _toDb(globalPeakBand);
+      final peakAmpDb = math.max(_toDb(globalPeakAmp), floorDb + 1.0);
+      final peakWaveDb = math.max(
+        _toDb(math.max(globalPeakWave, globalPeakAmp)),
+        floorDb + 1.0,
+      );
+      final peakBandDb = math.max(_toDb(globalPeakBand), floorDb + 1.0);
 
-      double prevAmp = 0.0;
+      var envelope = 0.0;
+      var releasePeak = 0.0;
       final prevBand = List<double>.filled(bandCount, 0.0);
-      const smoothing = 0.55; // exponential smoothing factor (anti-flicker)
+      final prevWave = List<double>.filled(_waveformSampleCount, 0.0);
+      double previousNormAmp = 0.0;
+      const bandSmoothing = 0.50;
+      const waveSmoothing = 0.48;
+      const attack = 0.88;
+      const release = 0.24;
+      const impactThreshold = 0.10;
 
       for (var f = 0; f < frameCount; f++) {
         final ampDb = _toDb(rawAmplitude[f]);
-        final normAmp = ((ampDb - floorDb) / (peakAmpDb - floorDb)).clamp(
-          0.0,
-          1.0,
-        );
-        final smoothedAmp = smoothing * normAmp + (1 - smoothing) * prevAmp;
-        amplitude[f] = smoothedAmp;
-        prevAmp = smoothedAmp;
+        final normAmp = ((ampDb - floorDb) / (peakAmpDb - floorDb))
+            .clamp(0.0, 1.0)
+            .toDouble();
+        final coeff = normAmp >= envelope ? attack : release;
+        envelope += (normAmp - envelope) * coeff;
+        amplitude[f] = envelope.clamp(0.0, 1.0).toDouble();
+
+        final jump = math.max(0.0, normAmp - previousNormAmp);
+        final impactValue = ((jump - impactThreshold) / (1 - impactThreshold))
+            .clamp(0.0, 1.0)
+            .toDouble();
+        releasePeak = math.max(impactValue, releasePeak * 0.72);
+        impact[f] = releasePeak;
+        previousNormAmp = normAmp;
+
+        for (var w = 0; w < _waveformSampleCount; w++) {
+          final waveDb = _toDb(rawWaveform[f][w]);
+          final normWave = ((waveDb - floorDb) / (peakWaveDb - floorDb))
+              .clamp(0.0, 1.0)
+              .toDouble();
+          final smoothedWave = waveSmoothing * normWave +
+              (1 - waveSmoothing) * prevWave[w];
+          waveform[f][w] = smoothedWave.clamp(0.0, 1.0).toDouble();
+          prevWave[w] = smoothedWave;
+        }
 
         for (var b = 0; b < bandCount; b++) {
           final bDb = _toDb(rawBands[f][b]);
-          final normBand = ((bDb - floorDb) / (peakBandDb - floorDb)).clamp(
-            0.0,
-            1.0,
-          );
+          final normBand = ((bDb - floorDb) / (peakBandDb - floorDb))
+              .clamp(0.0, 1.0)
+              .toDouble();
           final smoothedBand =
-              smoothing * normBand + (1 - smoothing) * prevBand[b];
-          bands[f][b] = smoothedBand;
+              bandSmoothing * normBand + (1 - bandSmoothing) * prevBand[b];
+          bands[f][b] = smoothedBand.clamp(0.0, 1.0).toDouble();
           prevBand[b] = smoothedBand;
         }
       }
@@ -218,9 +272,37 @@ class AudioAnalysisService {
       frameDurationMs: frameDurationMs,
       amplitude: amplitude,
       bands: bands,
+      waveform: waveform,
+      impact: impact,
       bandCount: bandCount,
+      waveformSampleCount: _waveformSampleCount,
       totalDurationMs: samples.length / _sampleRate * 1000,
     );
+  }
+
+  void _fillWaveformFrame({
+    required Float64List samples,
+    required int frameStart,
+    required int frameEnd,
+    required Float64List output,
+  }) {
+    final span = math.max(1, frameEnd - frameStart);
+    for (var w = 0; w < output.length; w++) {
+      final start = frameStart + (span * w / output.length).floor();
+      final end = frameStart + (span * (w + 1) / output.length).ceil();
+      final safeStart = start.clamp(0, samples.length - 1).toInt();
+      final safeEnd = end.clamp(safeStart + 1, samples.length).toInt();
+      double peak = 0.0;
+      double sumSquares = 0.0;
+      for (var i = safeStart; i < safeEnd; i++) {
+        final abs = samples[i].abs();
+        if (abs > peak) peak = abs;
+        sumSquares += abs * abs;
+      }
+      final rms = math.sqrt(sumSquares / math.max(1, safeEnd - safeStart));
+      // Peak catches fast horror hits; RMS keeps narration stable.
+      output[w] = peak * 0.55 + rms * 0.45;
+    }
   }
 
   double _toDb(double linear) {
@@ -253,7 +335,7 @@ class AudioAnalysisService {
     for (var i = 0; i <= bandCount; i++) {
       final t = i / bandCount;
       final hz = math.exp(logMin + (logMax - logMin) * t);
-      final bin = (hz / binHz).round().clamp(0, maxBin);
+      final bin = (hz / binHz).round().clamp(0, maxBin).toInt();
       edges.add(bin);
     }
     // Ensure strictly increasing edges.

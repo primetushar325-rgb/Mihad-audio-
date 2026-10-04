@@ -6,6 +6,8 @@ enum VisualizerAlignment { left, center, right }
 
 enum VisualizerColorMode { single, gradient, rainbow, random }
 
+enum VisualizerDensity { low, medium, high, ultra }
+
 enum ExportAspectRatio { ratio16x9, ratio9x16, ratio1x1, original }
 
 extension ExportAspectRatioX on ExportAspectRatio {
@@ -38,15 +40,30 @@ extension ExportAspectRatioX on ExportAspectRatio {
   }
 }
 
+extension VisualizerDensityX on VisualizerDensity {
+  String get label {
+    switch (this) {
+      case VisualizerDensity.low:
+        return 'Low';
+      case VisualizerDensity.medium:
+        return 'Medium';
+      case VisualizerDensity.high:
+        return 'High';
+      case VisualizerDensity.ultra:
+        return 'Ultra';
+    }
+  }
+}
+
 /// All user-adjustable appearance/position settings for a visualizer
 /// overlay. Position and size are stored as *fractions* (0.0-1.0) of the
 /// canvas, so the exact same settings object can drive both the live
 /// preview widget and the final pixel-accurate export renderer.
 ///
-/// The premium visualizer is a rounded, movable/resizable overlay box: it
-/// owns the background, border, wave colors and all wave styling values.
-/// Newly added fields use conservative defaults during JSON parsing so
-/// projects saved by older MIHAD AUDIO builds continue to load correctly.
+/// The default MIHAD AUDIO visualizer is now a story-friendly equalizer:
+/// many thin, independent, fixed-baseline vertical sticks driven by the
+/// analyzed audio. Old JSON fields are still accepted so existing projects
+/// keep opening.
 class VisualizerSettings {
   VisualizerTemplateType template;
 
@@ -72,7 +89,7 @@ class VisualizerSettings {
   /// those same two color fields so preview/export remain deterministic.
   VisualizerColorMode colorMode;
 
-  /// Rounded-rectangle background color behind the waveform.
+  /// Rounded-rectangle background color behind the waveform/equalizer.
   int backgroundColorValue;
 
   /// 0.0 (fully transparent) - 1.0 (fully opaque).
@@ -90,7 +107,7 @@ class VisualizerSettings {
   double waveOpacity;
 
   /// Backwards-compatible alias used by older code/tests and old JSON's
-  /// `opacity` key. It now means wave opacity.
+  /// `opacity` key. It now means wave/equalizer opacity.
   double get opacity => waveOpacity;
 
   /// 0.0 (no glow) - 1.0 (maximum glow blur radius).
@@ -100,17 +117,42 @@ class VisualizerSettings {
   /// 1.0 = neutral, >1.0 = more reactive, <1.0 = calmer.
   double sensitivity;
 
-  /// Stroke/bar thickness in logical pixels at a 1080-tall reference
-  /// canvas; scaled proportionally for other output sizes.
+  /// Stroke/bar thickness in logical pixels. The default is intentionally
+  /// thin so the visualizer reads as many radio-equalizer sticks, not large
+  /// blocks or a connected rope.
   double barWidth;
 
-  /// Number of spectrum columns to draw for dense bar/equalizer templates.
-  /// Clamped to a mobile-friendly range by the renderer.
+  /// Number of equalizer columns to draw for dense templates. Clamped by
+  /// the renderer to a mobile-friendly range.
   int barCount;
 
-  /// 0.0 - 1.0 spatial smoothing across neighboring frequency bars. This
-  /// keeps dense spectrums fluid without adding a separate animation loop.
+  /// Coarse density preset shown in the UI. The renderer combines this with
+  /// [barCount] and the available width to keep mobile performance safe.
+  VisualizerDensity density;
+
+  /// 0.0 - 1.0 spatial smoothing across neighboring bars.
   double smoothing;
+
+  /// 0.0 - 1.0 maximum vertical travel inside the overlay box. Real audio
+  /// still controls the actual height; this only caps the ceiling.
+  double waveHeight;
+
+  /// Optional sudden-impact boost, 0.0 - 1.0. Used for horror hits, screams,
+  /// whooshes and other quiet-to-loud changes detected in real audio.
+  double impactSensitivity;
+
+  /// 0.0 - 1.0 attack speed. Higher values rise faster on sudden sounds.
+  double attack;
+
+  /// 0.0 - 1.0 release length. Higher values fall more slowly/cinematically.
+  double release;
+
+  /// Default is OFF: bars grow upward from one fixed bottom baseline.
+  /// Mirrored growth is available only when the user/template requests it.
+  bool mirrored;
+
+  /// Draws a subtle fixed baseline (or center line for mirrored templates).
+  bool centerLineEnabled;
 
   /// User-facing alias for [barWidth].
   double get waveThickness => barWidth;
@@ -119,7 +161,7 @@ class VisualizerSettings {
   ExportAspectRatio aspectRatio;
 
   VisualizerSettings({
-    this.template = VisualizerTemplateType.spectrumBars,
+    this.template = VisualizerTemplateType.storyWave,
     this.posX = 0.1,
     this.posY = 0.65,
     this.width = 0.8,
@@ -128,8 +170,8 @@ class VisualizerSettings {
     int? secondaryColorValue,
     this.colorMode = VisualizerColorMode.gradient,
     int? backgroundColorValue,
-    this.backgroundOpacity = 0.55,
-    this.cornerRadius = 0.18,
+    this.backgroundOpacity = 0.20,
+    this.cornerRadius = 0.14,
     this.borderEnabled = false,
     int? borderColorValue,
     this.borderOpacity = 0.75,
@@ -137,20 +179,27 @@ class VisualizerSettings {
     double? opacity,
     double? waveOpacity,
     this.glowIntensity = 0.35,
-    this.sensitivity = 1.0,
-    this.barCount = 80,
-    this.smoothing = 0.45,
+    this.sensitivity = 1.10,
+    this.barCount = 88,
+    this.density = VisualizerDensity.high,
+    this.smoothing = 0.65,
+    this.waveHeight = 0.78,
+    this.impactSensitivity = 0.65,
+    this.attack = 0.86,
+    this.release = 0.58,
+    this.mirrored = false,
+    this.centerLineEnabled = true,
     double? barWidth,
     double? waveThickness,
     this.alignment = VisualizerAlignment.center,
     this.aspectRatio = ExportAspectRatio.ratio16x9,
-  }) : primaryColorValue = primaryColorValue ?? 0xFF00E5A8,
-       secondaryColorValue = secondaryColorValue ?? 0xFF6C5CE7,
+  }) : primaryColorValue = primaryColorValue ?? 0xFF17D7FF,
+       secondaryColorValue = secondaryColorValue ?? 0xFF8B5CF6,
        backgroundColorValue = backgroundColorValue ?? 0xFF000000,
        borderColorValue = borderColorValue ?? 0xFFFFFFFF,
        waveOpacity = (waveOpacity ?? opacity ?? 1.0).clamp(0.0, 1.0).toDouble(),
-       barWidth = (waveThickness ?? barWidth ?? 4.0)
-           .clamp(0.5, 80.0)
+       barWidth = (waveThickness ?? barWidth ?? 1.6)
+           .clamp(0.5, 12.0)
            .toDouble();
 
   Color get primaryColor => Color(primaryColorValue);
@@ -179,7 +228,14 @@ class VisualizerSettings {
     double? glowIntensity,
     double? sensitivity,
     int? barCount,
+    VisualizerDensity? density,
     double? smoothing,
+    double? waveHeight,
+    double? impactSensitivity,
+    double? attack,
+    double? release,
+    bool? mirrored,
+    bool? centerLineEnabled,
     double? barWidth,
     double? waveThickness,
     VisualizerAlignment? alignment,
@@ -205,18 +261,169 @@ class VisualizerSettings {
       glowIntensity: glowIntensity ?? this.glowIntensity,
       sensitivity: sensitivity ?? this.sensitivity,
       barCount: barCount ?? this.barCount,
+      density: density ?? this.density,
       smoothing: smoothing ?? this.smoothing,
+      waveHeight: waveHeight ?? this.waveHeight,
+      impactSensitivity: impactSensitivity ?? this.impactSensitivity,
+      attack: attack ?? this.attack,
+      release: release ?? this.release,
+      mirrored: mirrored ?? this.mirrored,
+      centerLineEnabled: centerLineEnabled ?? this.centerLineEnabled,
       barWidth: waveThickness ?? barWidth ?? this.barWidth,
       alignment: alignment ?? this.alignment,
       aspectRatio: aspectRatio ?? this.aspectRatio,
     );
   }
 
-  /// Resets appearance to sane defaults while preserving the chosen
-  /// template and aspect ratio (matches "Reset to default settings").
-  VisualizerSettings resetAppearance() {
-    return VisualizerSettings(template: template, aspectRatio: aspectRatio);
+  /// Applies a template and its sensible story/music/horror preset without
+  /// moving or resizing the user's overlay box.
+  VisualizerSettings applyTemplatePreset(VisualizerTemplateType next) {
+    final base = copyWith(template: next);
+    switch (next) {
+      case VisualizerTemplateType.storyWave:
+        return base.copyWith(
+          colorMode: VisualizerColorMode.gradient,
+          primaryColorValue: 0xFF17D7FF,
+          secondaryColorValue: 0xFF8B5CF6,
+          backgroundOpacity: 0.20,
+          glowIntensity: 0.35,
+          sensitivity: 1.10,
+          density: VisualizerDensity.high,
+          barCount: 88,
+          smoothing: 0.65,
+          waveHeight: 0.78,
+          impactSensitivity: 0.58,
+          attack: 0.86,
+          release: 0.58,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 1.6,
+        );
+      case VisualizerTemplateType.horrorWave:
+      case VisualizerTemplateType.darkWave:
+        return base.copyWith(
+          colorMode: VisualizerColorMode.gradient,
+          primaryColorValue: 0xFFE11D48,
+          secondaryColorValue: 0xFF3B0764,
+          backgroundOpacity: 0.28,
+          glowIntensity: 0.40,
+          sensitivity: 1.30,
+          density: VisualizerDensity.high,
+          barCount: 96,
+          smoothing: 0.55,
+          waveHeight: 0.86,
+          impactSensitivity: 0.70,
+          attack: 0.92,
+          release: 0.56,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 1.4,
+        );
+      case VisualizerTemplateType.cinematicWave:
+      case VisualizerTemplateType.cinematicGlow:
+        return base.copyWith(
+          colorMode: VisualizerColorMode.gradient,
+          primaryColorValue: 0xFF38BDF8,
+          secondaryColorValue: 0xFFA855F7,
+          backgroundOpacity: 0.24,
+          glowIntensity: 0.45,
+          sensitivity: 1.10,
+          density: VisualizerDensity.high,
+          barCount: 96,
+          smoothing: 0.70,
+          waveHeight: 0.80,
+          impactSensitivity: 0.62,
+          attack: 0.80,
+          release: 0.70,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 1.7,
+        );
+      case VisualizerTemplateType.spectrumBars:
+      case VisualizerTemplateType.equalizerBars:
+      case VisualizerTemplateType.gradientBars:
+        return base.copyWith(
+          colorMode: VisualizerColorMode.gradient,
+          primaryColorValue: 0xFFFF3B30,
+          secondaryColorValue: 0xFF0A84FF,
+          glowIntensity: 0.38,
+          sensitivity: 1.10,
+          density: VisualizerDensity.high,
+          barCount: 96,
+          smoothing: 0.45,
+          waveHeight: 0.84,
+          impactSensitivity: 0.55,
+          attack: 0.88,
+          release: 0.45,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 1.8,
+        );
+      case VisualizerTemplateType.rainbowWave:
+        return base.copyWith(
+          colorMode: VisualizerColorMode.rainbow,
+          glowIntensity: 0.42,
+          sensitivity: 1.10,
+          density: VisualizerDensity.high,
+          barCount: 100,
+          smoothing: 0.45,
+          waveHeight: 0.84,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 1.8,
+        );
+      case VisualizerTemplateType.mirrorBars:
+      case VisualizerTemplateType.mirrorWave:
+      case VisualizerTemplateType.dualWaveform:
+      case VisualizerTemplateType.doubleWave:
+        return base.copyWith(
+          mirrored: true,
+          centerLineEnabled: true,
+          density: VisualizerDensity.high,
+          barCount: 88,
+          barWidth: 1.8,
+          smoothing: 0.58,
+        );
+      case VisualizerTemplateType.minimalStory:
+      case VisualizerTemplateType.minimalLineWave:
+        return base.copyWith(
+          colorMode: VisualizerColorMode.single,
+          primaryColorValue: 0xFFFFFFFF,
+          secondaryColorValue: 0xFFFFFFFF,
+          backgroundOpacity: 0.08,
+          glowIntensity: 0.18,
+          sensitivity: 1.00,
+          density: VisualizerDensity.medium,
+          barCount: 72,
+          smoothing: 0.70,
+          waveHeight: 0.64,
+          impactSensitivity: 0.45,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 1.2,
+        );
+      case VisualizerTemplateType.bassPulse:
+      case VisualizerTemplateType.thickBars:
+        return base.copyWith(
+          density: VisualizerDensity.medium,
+          barCount: 64,
+          smoothing: 0.42,
+          waveHeight: 0.88,
+          sensitivity: 1.20,
+          impactSensitivity: 0.62,
+          mirrored: false,
+          centerLineEnabled: true,
+          barWidth: 2.2,
+        );
+      default:
+        return base;
+    }
   }
+
+  /// Reset restores the whole visualizer to the built-in Story Equalizer
+  /// default, including template, colors, density, controls, position and
+  /// size. This matches the editor's reset expectation.
+  VisualizerSettings resetAppearance() => VisualizerSettings();
 
   Map<String, dynamic> toJson() => {
     'template': template.name,
@@ -241,7 +448,14 @@ class VisualizerSettings {
     'glowIntensity': glowIntensity,
     'sensitivity': sensitivity,
     'barCount': barCount,
+    'density': density.name,
     'smoothing': smoothing,
+    'waveHeight': waveHeight,
+    'impactSensitivity': impactSensitivity,
+    'attack': attack,
+    'release': release,
+    'mirrored': mirrored,
+    'centerLineEnabled': centerLineEnabled,
     'barWidth': barWidth,
     'waveThickness': barWidth,
     'alignment': alignment.name,
@@ -252,14 +466,14 @@ class VisualizerSettings {
     return VisualizerSettings(
       template: VisualizerTemplateType.values.firstWhere(
         (e) => e.name == json['template'],
-        orElse: () => VisualizerTemplateType.spectrumBars,
+        orElse: () => VisualizerTemplateType.storyWave,
       ),
       posX: _double(json['posX'], 0.1),
       posY: _double(json['posY'], 0.65),
       width: _double(json['width'], 0.8),
       height: _double(json['height'], 0.25),
-      primaryColorValue: _int(json['primaryColorValue'], 0xFF00E5A8),
-      secondaryColorValue: _int(json['secondaryColorValue'], 0xFF6C5CE7),
+      primaryColorValue: _int(json['primaryColorValue'], 0xFF17D7FF),
+      secondaryColorValue: _int(json['secondaryColorValue'], 0xFF8B5CF6),
       colorMode: VisualizerColorMode.values.firstWhere(
         (e) => e.name == json['colorMode'],
         orElse: () => VisualizerColorMode.gradient,
@@ -268,7 +482,7 @@ class VisualizerSettings {
       backgroundOpacity: _double(json['backgroundOpacity'], 0.0)
           .clamp(0.0, 1.0)
           .toDouble(),
-      cornerRadius: _double(json['cornerRadius'], 0.18)
+      cornerRadius: _double(json['cornerRadius'], 0.14)
           .clamp(0.0, 1.0)
           .toDouble(),
       borderEnabled: json['borderEnabled'] as bool? ?? false,
@@ -285,15 +499,29 @@ class VisualizerSettings {
       glowIntensity: _double(json['glowIntensity'], 0.35)
           .clamp(0.0, 1.0)
           .toDouble(),
-      sensitivity: _double(json['sensitivity'], 1.0)
+      sensitivity: _double(json['sensitivity'], 1.10)
           .clamp(0.05, 10.0)
           .toDouble(),
-      barCount: _int(json['barCount'], 80).clamp(16, 160).toInt(),
-      smoothing: _double(json['smoothing'], 0.45)
+      barCount: _int(json['barCount'], 88).clamp(16, 180).toInt(),
+      density: VisualizerDensity.values.firstWhere(
+        (e) => e.name == json['density'],
+        orElse: () => VisualizerDensity.high,
+      ),
+      smoothing: _double(json['smoothing'], 0.65)
           .clamp(0.0, 1.0)
           .toDouble(),
-      barWidth: _double(json['waveThickness'] ?? json['barWidth'], 4.0)
-          .clamp(0.5, 80.0)
+      waveHeight: _double(json['waveHeight'], 0.78)
+          .clamp(0.05, 1.0)
+          .toDouble(),
+      impactSensitivity: _double(json['impactSensitivity'], 0.65)
+          .clamp(0.0, 1.0)
+          .toDouble(),
+      attack: _double(json['attack'], 0.86).clamp(0.0, 1.0).toDouble(),
+      release: _double(json['release'], 0.58).clamp(0.0, 1.0).toDouble(),
+      mirrored: json['mirrored'] as bool? ?? false,
+      centerLineEnabled: json['centerLineEnabled'] as bool? ?? true,
+      barWidth: _double(json['waveThickness'] ?? json['barWidth'], 1.6)
+          .clamp(0.5, 12.0)
           .toDouble(),
       alignment: VisualizerAlignment.values.firstWhere(
         (e) => e.name == json['alignment'],

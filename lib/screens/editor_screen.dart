@@ -359,7 +359,7 @@ class _TemplateSection extends StatelessWidget {
               );
           if (selected != null) {
             editor.updateVisualizerSettings(
-              (s) => s.copyWith(template: selected),
+              (s) => s.applyTemplatePreset(selected),
             );
           }
         },
@@ -557,6 +557,28 @@ class _AppearanceSection extends StatelessWidget {
                 ),
               ],
             ),
+            sectionLabel('Mode'),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'waveform', label: Text('Waveform')),
+                ButtonSegment(value: 'spectrum', label: Text('Spectrum')),
+                ButtonSegment(value: 'cinematic', label: Text('Cinematic')),
+              ],
+              selected: {_modeForTemplate(settings.template)},
+              onSelectionChanged: (set) {
+                final template = switch (set.first) {
+                  'spectrum' => VisualizerTemplateType.spectrumBars,
+                  'cinematic' => VisualizerTemplateType.cinematicWave,
+                  _ => VisualizerTemplateType.storyWave,
+                };
+                update((s) => s.applyTemplatePreset(template));
+              },
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Waveform uses real time-domain audio; Spectrum uses FFT frequency bands; Cinematic blends both.',
+              style: TextStyle(fontSize: 11.5, color: MihadColors.textSecondary),
+            ),
             sectionLabel('Color'),
             SegmentedButton<VisualizerColorMode>(
               segments: const [
@@ -745,9 +767,9 @@ class _AppearanceSection extends StatelessWidget {
                 valueLabel: '${settings.borderWidth.toStringAsFixed(1)} px',
               ),
             ],
-            sectionLabel('Wave'),
+            sectionLabel('Equalizer / Wave'),
             slider(
-              'Wave opacity',
+              'Opacity',
               settings.waveOpacity,
               0,
               1,
@@ -765,29 +787,95 @@ class _AppearanceSection extends StatelessWidget {
               divisions: 100,
             ),
             slider(
-              'Thickness',
+              'Line thickness',
               settings.barWidth,
               1,
-              24,
+              5,
               (v) => update((s) => s.copyWith(barWidth: v)),
-              valueLabel: settings.barWidth.toStringAsFixed(1),
+              valueLabel: '${settings.barWidth.toStringAsFixed(1)} px',
+              divisions: 40,
             ),
             slider(
               'Sensitivity',
               settings.sensitivity,
-              0.3,
-              2.5,
+              0.2,
+              2.0,
               (v) => update((s) => s.copyWith(sensitivity: v)),
-              valueLabel: '${settings.sensitivity.toStringAsFixed(2)}×',
+              valueLabel: '${((settings.sensitivity / 2.0) * 100).round()}%',
+              divisions: 90,
             ),
             slider(
-              'Bar density',
+              'Wave height',
+              settings.waveHeight,
+              0.05,
+              1,
+              (v) => update((s) => s.copyWith(waveHeight: v)),
+              valueLabel: '${(settings.waveHeight * 100).round()}%',
+              divisions: 95,
+            ),
+            slider(
+              'Impact sensitivity',
+              settings.impactSensitivity,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(impactSensitivity: v)),
+              valueLabel: '${(settings.impactSensitivity * 100).round()}%',
+              divisions: 100,
+            ),
+            slider(
+              'Attack',
+              settings.attack,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(attack: v)),
+              valueLabel: '${(settings.attack * 100).round()}%',
+              divisions: 100,
+            ),
+            slider(
+              'Release',
+              settings.release,
+              0,
+              1,
+              (v) => update((s) => s.copyWith(release: v)),
+              valueLabel: '${(settings.release * 100).round()}%',
+              divisions: 100,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Density',
+              style: TextStyle(fontSize: 13, color: MihadColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<VisualizerDensity>(
+              segments: VisualizerDensity.values
+                  .map(
+                    (density) => ButtonSegment(
+                      value: density,
+                      label: Text(density.label),
+                    ),
+                  )
+                  .toList(),
+              selected: {settings.density},
+              onSelectionChanged: (set) => update(
+                (s) => s.copyWith(
+                  density: set.first,
+                  barCount: switch (set.first) {
+                    VisualizerDensity.low => 56,
+                    VisualizerDensity.medium => 72,
+                    VisualizerDensity.high => 96,
+                    VisualizerDensity.ultra => 132,
+                  },
+                ),
+              ),
+            ),
+            slider(
+              'Fine bar count',
               settings.barCount.toDouble(),
-              24,
-              96,
+              36,
+              160,
               (v) => update((s) => s.copyWith(barCount: v.round())),
               valueLabel: '${settings.barCount} bars',
-              divisions: 72,
+              divisions: 124,
             ),
             slider(
               'Smoothing',
@@ -798,6 +886,21 @@ class _AppearanceSection extends StatelessWidget {
               valueLabel: '${(settings.smoothing * 100).round()}%',
               divisions: 100,
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Mirror mode'),
+              subtitle: const Text('Off by default: fixed bottom, top moves only'),
+              value: settings.mirrored,
+              onChanged: (v) => update((s) => s.copyWith(mirrored: v)),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Baseline / center line'),
+              subtitle: const Text('Subtle fixed anchor line for the equalizer'),
+              value: settings.centerLineEnabled,
+              onChanged: (v) => update((s) => s.copyWith(centerLineEnabled: v)),
+            ),
+
             sectionLabel('Alignment'),
             SegmentedButton<VisualizerAlignment>(
               segments: const [
@@ -895,6 +998,29 @@ class _AppearanceSection extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+String _modeForTemplate(VisualizerTemplateType template) {
+  switch (template) {
+    case VisualizerTemplateType.spectrumBars:
+    case VisualizerTemplateType.equalizerBars:
+    case VisualizerTemplateType.frequencyWave:
+    case VisualizerTemplateType.rainbowWave:
+    case VisualizerTemplateType.classicBars:
+    case VisualizerTemplateType.roundedBars:
+    case VisualizerTemplateType.thinBars:
+    case VisualizerTemplateType.thickBars:
+    case VisualizerTemplateType.gradientBars:
+    case VisualizerTemplateType.bassPulse:
+      return 'spectrum';
+    case VisualizerTemplateType.cinematicWave:
+    case VisualizerTemplateType.cinematicGlow:
+    case VisualizerTemplateType.tripleWave:
+    case VisualizerTemplateType.floatingBars:
+      return 'cinematic';
+    default:
+      return 'waveform';
   }
 }
 

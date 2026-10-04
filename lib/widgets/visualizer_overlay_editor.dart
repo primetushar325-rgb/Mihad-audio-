@@ -154,9 +154,10 @@ class _VisualizerOverlayEditorState extends State<VisualizerOverlayEditor> {
                                 .position
                                 .inMilliseconds
                                 .toDouble();
-                            final frame = VisualizerFrameData(
-                              amplitude: widget.analysisData.amplitudeAt(posMs),
-                              bands: widget.analysisData.bandsAt(posMs),
+                            final frame = visualizerFrameFromAnalysis(
+                              widget.analysisData,
+                              posMs,
+                              s,
                             );
                             return CustomPaint(
                               painter: VisualizerCanvasPainter(

@@ -3,45 +3,55 @@ import 'templates/premium_visualizer_painters.dart';
 import 'visualizer_painter_base.dart';
 
 /// Central lookup from a [VisualizerTemplateType] to its rendering
-/// implementation. The default and primary templates render dense FFT
-/// spectrum/equalizer bars (not oscilloscope lines). Voice Wave and Horror
-/// Wave intentionally remain line-style specialty templates.
+/// implementation.
+///
+/// The primary Story/Horror visualizers are fixed-bottom vertical-stick
+/// equalizers driven by real time-domain waveform/envelope data. Music
+/// templates use independent FFT/frequency bars. Voice Wave is the only
+/// intentional connected waveform-line specialty template.
 final Map<VisualizerTemplateType, VisualizerPainterDelegate>
 visualizerRegistry = {
-  // Original 10 identifiers kept for old projects, remapped to professional
-  // spectrum/equalizer renderers where appropriate.
+  // Original 10 identifiers kept for old projects, remapped away from the
+  // wrong default green wire/zigzag look.
   VisualizerTemplateType.classicWaveform: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.classic,
-    barCount: 52,
-    widthFactor: 0.50,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 72,
+    widthFactor: 0.26,
   ),
   VisualizerTemplateType.equalizerBars: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.dense,
-    barCount: 80,
+    style: PremiumSpectrumStyle.spectrum,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 96,
   ),
   VisualizerTemplateType.circularSpectrum: PremiumCirclePainter(
     shape: PremiumCircleShape.spectrum,
     count: 80,
   ),
   VisualizerTemplateType.minimalLineWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.thin,
+    style: PremiumSpectrumStyle.minimal,
+    source: PremiumSpectrumSource.waveform,
     barCount: 72,
-    widthFactor: 0.24,
+    widthFactor: 0.18,
   ),
   VisualizerTemplateType.neonWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.neon,
-    barCount: 80,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 92,
+    widthFactor: 0.24,
   ),
   VisualizerTemplateType.dualWaveform: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.mirrored,
-    barCount: 72,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 88,
   ),
   VisualizerTemplateType.dotSpectrum: PremiumCirclePainter(
     shape: PremiumCircleShape.dotSpectrum,
   ),
   VisualizerTemplateType.mirrorBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.mirrored,
-    barCount: 80,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 96,
   ),
   VisualizerTemplateType.pulseCircle: PremiumCirclePainter(
     shape: PremiumCircleShape.pulseCircle,
@@ -52,58 +62,70 @@ visualizerRegistry = {
     anchor: PremiumBarsAnchor.vertical,
   ),
 
-  // Former waveform names now use frequency-driven spectrum algorithms so
-  // the gallery no longer shows many copies of a thin zigzag line.
+  // Premium waveform/story names now render as independent vertical sticks
+  // using real time-domain waveform data unless explicitly Voice Wave.
   VisualizerTemplateType.smoothWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.dense,
-    barCount: 80,
+    style: PremiumSpectrumStyle.story,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 88,
   ),
   VisualizerTemplateType.thickWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.rounded,
-    barCount: 56,
-    widthFactor: 0.50,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 64,
+    widthFactor: 0.38,
   ),
   VisualizerTemplateType.thinWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.thin,
-    barCount: 88,
-    widthFactor: 0.22,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 100,
+    widthFactor: 0.18,
   ),
   VisualizerTemplateType.doubleWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.mirrored,
-    barCount: 76,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 88,
   ),
   VisualizerTemplateType.tripleWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.cinematic,
-    barCount: 84,
+    source: PremiumSpectrumSource.cinematic,
+    barCount: 96,
   ),
   VisualizerTemplateType.mirrorWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.mirrored,
-    barCount: 80,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 92,
   ),
   VisualizerTemplateType.filledWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.bottom,
+    style: PremiumSpectrumStyle.rounded,
+    source: PremiumSpectrumSource.waveform,
     barCount: 80,
-    widthFactor: 0.44,
+    widthFactor: 0.34,
   ),
   VisualizerTemplateType.glowWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.neon,
-    barCount: 80,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 92,
   ),
   VisualizerTemplateType.pulseWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.cinematic,
-    barCount: 64,
+    style: PremiumSpectrumStyle.impact,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 92,
   ),
   VisualizerTemplateType.frequencyWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.dense,
-    barCount: 96,
+    style: PremiumSpectrumStyle.spectrum,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 104,
   ),
   VisualizerTemplateType.rainbowWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.rainbow,
-    barCount: 88,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 104,
   ),
   VisualizerTemplateType.cinematicWave: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.cinematic,
-    barCount: 84,
+    source: PremiumSpectrumSource.cinematic,
+    barCount: 96,
   ),
   VisualizerTemplateType.voiceWave: PremiumWavePainter(
     shape: PremiumWaveShape.voice,
@@ -113,50 +135,59 @@ visualizerRegistry = {
   // Equalizers.
   VisualizerTemplateType.classicBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.classic,
-    barCount: 48,
-    widthFactor: 0.55,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 72,
+    widthFactor: 0.32,
   ),
   VisualizerTemplateType.roundedBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.rounded,
-    barCount: 64,
-    widthFactor: 0.48,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 88,
+    widthFactor: 0.34,
   ),
   VisualizerTemplateType.thinBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.thin,
-    barCount: 96,
-    widthFactor: 0.20,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 112,
+    widthFactor: 0.17,
   ),
   VisualizerTemplateType.thickBars: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.rounded,
-    barCount: 40,
-    widthFactor: 0.65,
+    style: PremiumSpectrumStyle.bass,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 64,
+    widthFactor: 0.42,
   ),
   VisualizerTemplateType.floatingBars: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.mirrored,
-    barCount: 72,
-    widthFactor: 0.34,
+    style: PremiumSpectrumStyle.cinematic,
+    source: PremiumSpectrumSource.cinematic,
+    barCount: 88,
   ),
   VisualizerTemplateType.centerBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.mirrored,
-    barCount: 80,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 96,
   ),
   VisualizerTemplateType.bottomBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.bottom,
-    barCount: 80,
-    widthFactor: 0.42,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 96,
+    widthFactor: 0.28,
   ),
   VisualizerTemplateType.topBars: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.top,
-    barCount: 80,
-    widthFactor: 0.42,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 96,
+    widthFactor: 0.28,
   ),
   VisualizerTemplateType.gradientBars: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.dense,
-    barCount: 88,
+    style: PremiumSpectrumStyle.spectrum,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 100,
   ),
   VisualizerTemplateType.spectrumBars: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.dense,
-    barCount: 88,
+    style: PremiumSpectrumStyle.spectrum,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 100,
   ),
 
   // Circular.
@@ -181,36 +212,51 @@ visualizerRegistry = {
 
   // Cinematic/story.
   VisualizerTemplateType.minimalStory: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.thin,
+    style: PremiumSpectrumStyle.minimal,
+    source: PremiumSpectrumSource.waveform,
     barCount: 72,
+    widthFactor: 0.16,
   ),
   VisualizerTemplateType.darkWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.neon,
-    barCount: 72,
+    style: PremiumSpectrumStyle.horror,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 96,
+    widthFactor: 0.20,
   ),
-  VisualizerTemplateType.horrorWave: PremiumStoryPainter(
-    PremiumStoryShape.horror,
+  VisualizerTemplateType.horrorWave: PremiumSpectrumPainter(
+    style: PremiumSpectrumStyle.horror,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 96,
+    widthFactor: 0.20,
   ),
   VisualizerTemplateType.cinematicGlow: PremiumSpectrumPainter(
     style: PremiumSpectrumStyle.cinematic,
-    barCount: 84,
+    source: PremiumSpectrumSource.cinematic,
+    barCount: 96,
   ),
-  VisualizerTemplateType.podcastWave: PremiumStoryPainter(
-    PremiumStoryShape.podcast,
+  VisualizerTemplateType.podcastWave: PremiumSpectrumPainter(
+    style: PremiumSpectrumStyle.story,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 84,
+    widthFactor: 0.24,
   ),
   VisualizerTemplateType.storyWave: PremiumSpectrumPainter(
-    style: PremiumSpectrumStyle.bottom,
-    barCount: 72,
+    style: PremiumSpectrumStyle.story,
+    source: PremiumSpectrumSource.waveform,
+    barCount: 88,
+    widthFactor: 0.22,
   ),
   VisualizerTemplateType.centerPulse: PremiumStoryPainter(
     PremiumStoryShape.centerPulse,
   ),
-  VisualizerTemplateType.bassPulse: PremiumStoryPainter(
-    PremiumStoryShape.bassPulse,
+  VisualizerTemplateType.bassPulse: PremiumSpectrumPainter(
+    style: PremiumSpectrumStyle.bass,
+    source: PremiumSpectrumSource.spectrum,
+    barCount: 72,
+    widthFactor: 0.36,
   ),
 };
 
 VisualizerPainterDelegate painterFor(VisualizerTemplateType type) {
-  return visualizerRegistry[type] ??
-      visualizerRegistry[VisualizerTemplateType.spectrumBars]!;
+  return visualizerRegistry[type] ?? visualizerRegistry[VisualizerTemplateType.storyWave]!;
 }

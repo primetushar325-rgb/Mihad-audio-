@@ -35,11 +35,17 @@ void main() {
 
         final loudFrame = VisualizerFrameData(
           amplitude: 0.9,
+          envelope: 0.9,
+          impact: 0.4,
           bands: List.generate(32, (i) => (i % 4) / 4),
+          waveformSamples: List.generate(96, (i) => (i % 6) / 6),
         );
         final silentFrame = VisualizerFrameData(
           amplitude: 0.0,
+          envelope: 0.0,
+          impact: 0.0,
           bands: List.filled(32, 0.0),
+          waveformSamples: List.filled(96, 0.0),
         );
 
         for (final frame in [loudFrame, silentFrame]) {
@@ -74,8 +80,15 @@ void main() {
     final silent = VisualizerFrameData(
       amplitude: 0,
       bands: List.filled(32, 0.0),
+      waveformSamples: List.filled(96, 0.0),
     );
-    final loud = VisualizerFrameData(amplitude: 1, bands: List.filled(32, 1.0));
+    final loud = VisualizerFrameData(
+      amplitude: 1,
+      envelope: 1,
+      impact: 0.8,
+      bands: List.filled(32, 1.0),
+      waveformSamples: List.filled(96, 1.0),
+    );
 
     expect(() {
       final r1 = ui.PictureRecorder();

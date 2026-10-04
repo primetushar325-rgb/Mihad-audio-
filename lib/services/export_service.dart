@@ -180,9 +180,10 @@ class ExportService {
       if (cancelToken.isCancelled) throw ExportCancelledException();
 
       final timeMs = i / fps * 1000;
-      final frameData = VisualizerFrameData(
-        amplitude: analysisData.amplitudeAt(timeMs),
-        bands: analysisData.bandsAt(timeMs),
+      final frameData = visualizerFrameFromAnalysis(
+        analysisData,
+        timeMs,
+        localSettings,
       );
 
       final recorder = ui.PictureRecorder();
